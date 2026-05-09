@@ -226,6 +226,18 @@ def _apply_operations(staged_operations: list[dict[str, Any]]) -> None:
             absolute_target_path.mkdir(parents=True, exist_ok=True)
             continue
 
+        if absolute_target_path.exists():
+            if absolute_target_path.is_dir():
+                raise ScaffoldWriterError(
+                    f"refusing to overwrite directory with file: {absolute_target_path}"
+                )
+            existing_content = absolute_target_path.read_bytes()
+            if existing_content != staged_operation["content_bytes"]:
+                raise ScaffoldWriterError(
+                    f"refusing to overwrite existing file without explicit authorization: {absolute_target_path}"
+                )
+            continue
+
         absolute_target_path.parent.mkdir(parents=True, exist_ok=True)
         absolute_target_path.write_bytes(staged_operation["content_bytes"])
 

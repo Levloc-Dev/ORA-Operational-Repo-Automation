@@ -172,3 +172,18 @@ def test_execute_repo_bootstrap_plan_is_deterministic_across_repeated_execution(
         "# ORA-Slice-3-Example\n\n"
         "Generated from the ORA Slice 1 deterministic scaffold.\n"
     )
+
+
+def test_execute_repo_bootstrap_plan_rejects_conflicting_existing_file(
+    tmp_path: Path,
+) -> None:
+    plan = build_repo_bootstrap_plan_from_file(FIXTURE_DIR / "valid_csl_governed.yaml")
+    target_root = tmp_path / "conflicting-target"
+    target_root.mkdir()
+    (target_root / "README.md").write_text("conflicting content\n", encoding="utf-8")
+
+    with pytest.raises(
+        ScaffoldWriterError,
+        match="refusing to overwrite existing file without explicit authorization",
+    ):
+        execute_repo_bootstrap_plan(plan, target_root=target_root)

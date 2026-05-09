@@ -98,6 +98,7 @@ REQUIRED_PATHS = [
     "tools/check_memory_integrity.py",
     "tools/validate_execution_records.py",
     "tools/check_working_tree_artifact_admission.py",
+    "tools/ora_execute_bootstrap_plan.py",
     "validators/validate_ora_contract_stack.py",
     "validators/validate_fail_closed_boundaries.py",
     "tests/contract",
