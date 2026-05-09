@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed static validation for Slice 1 profile stubs."""
+"""Deterministic schema-backed validation for ORA project profiles."""
 
 from __future__ import annotations
 
@@ -8,6 +8,18 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
+SRC_ROOT = ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+from ora.validation.schema_subset import (  # noqa: E402
+    ValidationResult,
+    load_json_file,
+    load_yaml_subset_file,
+    validate_instance,
+)
+
+
 PROFILE_DIR = ROOT / "profiles"
 SCHEMA_PATH = ROOT / "schemas/profile/project_profile.schema.json"
 PROFILE_FILES = [
@@ -17,39 +29,62 @@ PROFILE_FILES = [
     "RESEARCH_LIBRARY.yaml",
     "SANDBOX.yaml",
 ]
-REQUIRED_KEYS = [
-    "profile_id:",
-    "required_directories:",
-    "optional_directories:",
-    "required_governance_artifacts:",
-    "required_validators:",
-    "branch_strategy:",
-    "repo_sync_mode:",
-    "initial_files:",
-    "prohibited_actions:",
-    "escalation_triggers:",
-]
+REQUIRED_PROHIBITED_ACTIONS = {
+    "unrestricted_shell",
+    "deploy",
+    "autonomous_merge",
+}
 
 
-def main() -> int:
+def validate_profiles(root: Path = ROOT) -> ValidationResult:
     errors: list[str] = []
-    if not SCHEMA_PATH.exists():
+    schema_path = root / "schemas/profile/project_profile.schema.json"
+    profile_dir = root / "profiles"
+
+    if not schema_path.exists():
         errors.append("missing schema: schemas/profile/project_profile.schema.json")
+        return ValidationResult(tuple(errors))
+
+    schema = load_json_file(schema_path)
 
     for name in PROFILE_FILES:
-        path = PROFILE_DIR / name
+        path = profile_dir / name
         if not path.exists():
             errors.append(f"missing profile: profiles/{name}")
             continue
-        text = path.read_text(encoding="utf-8")
-        for key in REQUIRED_KEYS:
-            if key not in text:
-                errors.append(f"profiles/{name} missing key {key.rstrip(':')}")
-        if "unrestricted_shell" not in text:
-            errors.append(f"profiles/{name} missing fail-closed prohibited action")
+        try:
+            document = load_yaml_subset_file(path)
+        except ValueError as exc:
+            errors.append(f"profiles/{name}: {exc}")
+            continue
 
-    if errors:
-        for error in errors:
+        errors.extend(validate_instance(document, schema, f"profiles/{name}"))
+
+        if isinstance(document, dict):
+            prohibited_actions = document.get("prohibited_actions")
+            if isinstance(prohibited_actions, list):
+                missing_actions = sorted(
+                    action
+                    for action in REQUIRED_PROHIBITED_ACTIONS
+                    if action not in prohibited_actions
+                )
+                for action in missing_actions:
+                    errors.append(
+                        f"profiles/{name}: prohibited_actions missing fail-closed entry '{action}'"
+                    )
+            else:
+                errors.append(
+                    f"profiles/{name}: prohibited_actions must be a list for fail-closed checks"
+                )
+
+    return ValidationResult(tuple(errors))
+
+
+def main() -> int:
+    result = validate_profiles()
+
+    if not result.ok:
+        for error in result.errors:
             print(error, file=sys.stderr)
         return 1
 
