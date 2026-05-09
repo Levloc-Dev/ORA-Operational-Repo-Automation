@@ -101,7 +101,7 @@ def _validate_schema_support(schema: Any, schema_path: str, errors: list[str]) -
             errors.append(f"{schema_path}.type: expected string or non-empty list")
             allowed_types = []
 
-        valid_types = {"object", "array", "string", "null"}
+        valid_types = {"object", "array", "string", "boolean", "null"}
         invalid_types = [entry for entry in allowed_types if entry not in valid_types]
         if invalid_types:
             errors.append(
@@ -161,6 +161,8 @@ def _validate_instance(
             schema_type = "array"
         elif "string" in schema_type and isinstance(instance, str):
             schema_type = "string"
+        elif "boolean" in schema_type and isinstance(instance, bool):
+            schema_type = "boolean"
         elif instance is None and "null" in schema_type:
             schema_type = "null"
         else:
@@ -204,6 +206,8 @@ def _matches_type(instance: Any, expected_type: str | list[str]) -> bool:
         return isinstance(instance, list)
     if expected_type == "string":
         return isinstance(instance, str)
+    if expected_type == "boolean":
+        return isinstance(instance, bool)
     if expected_type == "null":
         return instance is None
     return False

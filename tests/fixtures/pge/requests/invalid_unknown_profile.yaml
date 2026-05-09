@@ -1,0 +1,6 @@
+project_id: ora-slice-3-example
+repo_name: ORA-Slice-3-Example
+profile_id: UNKNOWN_PROFILE
+description: Invalid request fixture with an unknown profile.
+target_owner: Levloc-Dev
+local_path: /tmp/ora-slice-3-example

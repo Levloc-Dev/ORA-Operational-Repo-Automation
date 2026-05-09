@@ -1,0 +1,5 @@
+project_id: ora-slice-3-example
+repo_name: ORA-Slice-3-Example
+profile_id: CSL_GOVERNED
+description: Invalid request fixture missing the required local_path field.
+target_owner: Levloc-Dev
