@@ -17,34 +17,21 @@ if str(SRC_ROOT) not in sys.path:
 from ora.queue.queue_manager import (  # noqa: E402
     QueueManagerError,
     register_queue_item,
-    update_queue_item_state,
 )
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Register and update deterministic ORA queue items."
+        description="Admit deterministic ORA queue items."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    register_parser = subparsers.add_parser(
-        "register",
-        help="Register a new queue item for a known repo.",
+    admit_parser = subparsers.add_parser(
+        "admit",
+        help="Admit a known project to the queue.",
     )
-    register_parser.add_argument("--repo-id", required=True)
-    register_parser.add_argument("--queue-item-id", required=True)
-    register_parser.add_argument("--state", required=True)
-    register_parser.add_argument("--next-action", required=True)
-    register_parser.add_argument("--reason")
-
-    update_parser = subparsers.add_parser(
-        "update-state",
-        help="Update a known queue item to a closed-set state.",
-    )
-    update_parser.add_argument("--queue-item-id", required=True)
-    update_parser.add_argument("--state", required=True)
-    update_parser.add_argument("--next-action", required=True)
-    update_parser.add_argument("--reason")
+    admit_parser.add_argument("--project-id", required=True)
+    admit_parser.add_argument("--profile-id", required=True)
 
     return parser
 
@@ -53,27 +40,18 @@ def main(argv: list[str] | None = None, *, root: Path = ROOT) -> int:
     args = build_parser().parse_args(argv)
 
     try:
-        if args.command == "register":
-            result = register_queue_item(
-                repo_id=args.repo_id,
-                queue_item_id=args.queue_item_id,
-                state=args.state,
-                next_action=args.next_action,
-                root=root,
-                reason=args.reason,
-            )
-        else:
-            result = update_queue_item_state(
-                queue_item_id=args.queue_item_id,
-                state=args.state,
-                next_action=args.next_action,
-                root=root,
-                reason=args.reason,
-            )
+        result = register_queue_item(
+            project_id=args.project_id,
+            profile_id=args.profile_id,
+            root=root,
+        )
     except QueueManagerError as exc:
         result = {
-            "status": "REJECTED",
+            "admitted": False,
             "error": str(exc),
+            "profile_id": getattr(args, "profile_id", None),
+            "project_id": getattr(args, "project_id", None),
+            "repo_id": getattr(args, "project_id", None),
         }
         print(json.dumps(result, indent=2, sort_keys=True))
         return 1

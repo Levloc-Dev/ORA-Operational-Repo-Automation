@@ -1,275 +1,148 @@
-"""Deterministic queue registration and closed-set state updates for ORA."""
+"""Deterministic queue admission gate for ORA."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
-from ora.validation.schema_subset import load_json_file, load_yaml_subset_file, validate_instance
+from ora.validation.schema_subset import load_yaml_subset_file, validate_instance
 
 
 ROOT = Path(__file__).resolve().parents[3]
-QUEUE_ITEM_SCHEMA_PATH = Path("schemas/queue/queue_item.schema.json")
-REPO_REGISTRY_SCHEMA_PATH = Path("schemas/registry/repo_registry.schema.json")
 PROJECT_QUEUE_PATH = Path("queue/project_queue.yaml")
-BLOCKERS_PATH = Path("queue/blockers.yaml")
-ESCALATIONS_PATH = Path("queue/escalations.yaml")
+PROJECTS_REGISTRY_PATH = Path("registry/projects.yaml")
 REPOS_REGISTRY_PATH = Path("registry/repos.yaml")
-
-QUEUE_STATES = (
-    "PROPOSED",
-    "READY_FOR_BOOTSTRAP",
-    "BOOTSTRAPPING",
-    "READY_FOR_SLICE",
-    "IN_SLICE",
-    "VALIDATING",
-    "BLOCKED",
-    "ESCALATION_REQUIRED",
-    "READY_FOR_COMMIT",
-    "READY_FOR_SYNC",
-    "COMPLETE",
-    "ARCHIVED",
-)
-BLOCKED_STATE = "BLOCKED"
-ESCALATION_REQUIRED_STATE = "ESCALATION_REQUIRED"
-TERMINAL_STATES = frozenset({"COMPLETE", "ARCHIVED"})
-ACTIVE_STATES = frozenset(
-    state for state in QUEUE_STATES if state not in TERMINAL_STATES
-)
+READY_STATUS = "READY_FOR_FIRST_GOVERNED_SLICE"
 
 QUEUE_ITEM_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["queue_item_id", "repo_id", "state", "next_action"],
+    "required": [
+        "project_id",
+        "repo_id",
+        "profile_id",
+        "status",
+        "current_slice",
+        "blocker",
+        "escalation_required",
+    ],
     "properties": {
-        "queue_item_id": {"type": "string"},
+        "project_id": {"type": "string"},
         "repo_id": {"type": "string"},
-        "state": {"type": "string", "enum": list(QUEUE_STATES)},
-        "next_action": {"type": "string"},
+        "profile_id": {"type": "string"},
+        "status": {"type": "string", "enum": [READY_STATUS]},
+        "current_slice": {"type": "null"},
+        "blocker": {"type": "null"},
+        "escalation_required": {"type": "string", "enum": ["true"]},
     },
 }
 
-BLOCKER_ITEM_SCHEMA = {
+QUEUE_DOCUMENT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["blocker_id", "queue_item_id", "reason", "status"],
+    "required": ["queue_items"],
     "properties": {
-        "blocker_id": {"type": "string"},
-        "queue_item_id": {"type": "string"},
-        "reason": {"type": "string"},
-        "status": {"type": "string"},
-    },
-}
-
-ESCALATION_ITEM_SCHEMA = {
-    "type": "object",
-    "additionalProperties": False,
-    "required": ["escalation_id", "queue_item_id", "reason", "status"],
-    "properties": {
-        "escalation_id": {"type": "string"},
-        "queue_item_id": {"type": "string"},
-        "reason": {"type": "string"},
-        "status": {"type": "string"},
-    },
-}
-
-BLOCKERS_DOCUMENT_SCHEMA = {
-    "type": "object",
-    "additionalProperties": False,
-    "required": ["blockers"],
-    "properties": {
-        "blockers": {
+        "queue_items": {
             "type": "array",
-            "items": BLOCKER_ITEM_SCHEMA,
+            "items": QUEUE_ITEM_SCHEMA,
         }
     },
 }
 
-ESCALATIONS_DOCUMENT_SCHEMA = {
+PROJECTS_REGISTRY_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["escalations"],
+    "required": ["projects"],
     "properties": {
-        "escalations": {
+        "projects": {
             "type": "array",
-            "items": ESCALATION_ITEM_SCHEMA,
+            "items": {
+                "type": "object",
+                "required": ["project_id"],
+                "properties": {"project_id": {"type": "string"}},
+            },
+        }
+    },
+}
+
+REPOS_REGISTRY_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["repos"],
+    "properties": {
+        "repos": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["repo_id"],
+                "properties": {"repo_id": {"type": "string"}},
+            },
         }
     },
 }
 
 
 class QueueManagerError(ValueError):
-    """Raised when queue state cannot be updated safely."""
+    """Raised when queue admission cannot proceed safely."""
 
 
 def register_queue_item(
-    repo_id: str,
-    queue_item_id: str,
-    state: str,
-    next_action: str,
+    project_id: str,
+    profile_id: str,
     *,
     root: Path = ROOT,
-    reason: str | None = None,
 ) -> dict[str, Any]:
-    """Register a new queue item and synchronize queue metadata."""
+    """Admit a project to the governed queue if it passes verification."""
 
-    if not queue_item_id:
-        raise QueueManagerError("queue_item_id must be non-empty")
+    if not project_id:
+        raise QueueManagerError("project_id must be non-empty")
+    if not profile_id:
+        raise QueueManagerError("profile_id must be non-empty")
 
-    if not repo_id:
-        raise QueueManagerError("repo_id must be non-empty")
+    repo_id = _derive_repo_id(project_id)
+    queue_document = _load_and_validate_yaml(
+        root / PROJECT_QUEUE_PATH,
+        QUEUE_DOCUMENT_SCHEMA,
+        str(PROJECT_QUEUE_PATH),
+    )
+    projects_document = _load_and_validate_yaml(
+        root / PROJECTS_REGISTRY_PATH,
+        PROJECTS_REGISTRY_SCHEMA,
+        str(PROJECTS_REGISTRY_PATH),
+    )
+    repos_document = _load_and_validate_yaml(
+        root / REPOS_REGISTRY_PATH,
+        REPOS_REGISTRY_SCHEMA,
+        str(REPOS_REGISTRY_PATH),
+    )
 
-    if not next_action:
-        raise QueueManagerError("next_action must be non-empty")
+    _require_known_project(projects_document["projects"], project_id)
+    _require_known_repo(repos_document["repos"], repo_id)
+    _reject_duplicate_project(queue_document["queue_items"], project_id)
 
-    _require_known_state(state)
-    if state in TERMINAL_STATES:
-        raise QueueManagerError("cannot register queue item directly into a terminal state")
-    if state in {BLOCKED_STATE, ESCALATION_REQUIRED_STATE} and not reason:
-        raise QueueManagerError(f"reason is required when registering state {state}")
-
-    documents = _load_documents(root)
-    repos = documents["repos"]["repos"]
-    queue_items = documents["queue"]["queue_items"]
-
-    repo_entry = _find_repo(repos, repo_id)
-    _ensure_unique_queue_item(queue_items, queue_item_id)
-    _ensure_repo_is_available(repo_entry)
-
-    queue_item = {
-        "queue_item_id": queue_item_id,
-        "repo_id": repo_id,
-        "state": state,
-        "next_action": next_action,
-    }
-    queue_items.append(queue_item)
-    documents["queue"]["queue_items"] = _sorted_entries(queue_items, "queue_item_id")
-
-    repo_entry["current_queue_item"] = queue_item_id
-    repo_entry["last_known_status"] = state
-
-    if state == BLOCKED_STATE:
-        _upsert_reason_record(
-            documents["blockers"]["blockers"],
-            id_key="blocker_id",
-            item_id_prefix="blk",
-            queue_item_id=queue_item_id,
-            reason=reason,
-        )
-    elif state == ESCALATION_REQUIRED_STATE:
-        _upsert_reason_record(
-            documents["escalations"]["escalations"],
-            id_key="escalation_id",
-            item_id_prefix="esc",
-            queue_item_id=queue_item_id,
-            reason=reason,
-        )
-
-    _persist_documents(root, documents)
-    return _build_result(
-        action="REGISTERED",
-        queue_item=queue_item,
+    queue_item = _build_queue_item(
+        project_id=project_id,
         repo_id=repo_id,
-        updated_files=_updated_files(),
+        profile_id=profile_id,
     )
-
-
-def update_queue_item_state(
-    queue_item_id: str,
-    state: str,
-    next_action: str,
-    *,
-    root: Path = ROOT,
-    reason: str | None = None,
-) -> dict[str, Any]:
-    """Update a queue item to a new closed-set state."""
-
-    if not queue_item_id:
-        raise QueueManagerError("queue_item_id must be non-empty")
-
-    if not next_action:
-        raise QueueManagerError("next_action must be non-empty")
-
-    _require_known_state(state)
-    if state in {BLOCKED_STATE, ESCALATION_REQUIRED_STATE} and not reason:
-        raise QueueManagerError(f"reason is required when updating state to {state}")
-
-    documents = _load_documents(root)
-    queue_item = _find_queue_item(documents["queue"]["queue_items"], queue_item_id)
-    previous_state = queue_item["state"]
-    repo_entry = _find_repo(documents["repos"]["repos"], queue_item["repo_id"])
-
-    queue_item["state"] = state
-    queue_item["next_action"] = next_action
-    repo_entry["last_known_status"] = state
-
-    if state in ACTIVE_STATES:
-        _ensure_current_queue_item_matches(repo_entry, queue_item_id)
-        repo_entry["current_queue_item"] = queue_item_id
-    else:
-        if repo_entry.get("current_queue_item") == queue_item_id:
-            repo_entry["current_queue_item"] = None
-
-    _apply_reason_state_updates(
-        documents=documents,
-        queue_item_id=queue_item_id,
-        state=state,
-        reason=reason,
+    queue_document["queue_items"] = sorted(
+        [*queue_document["queue_items"], queue_item],
+        key=_queue_item_sort_key,
     )
+    _write_yaml(root / PROJECT_QUEUE_PATH, queue_document)
 
-    _persist_documents(root, documents)
     return {
-        "status": "UPDATED",
-        "queue_item_id": queue_item_id,
-        "repo_id": queue_item["repo_id"],
-        "previous_state": previous_state,
-        "state": state,
-        "next_action": next_action,
-        "updated_files": _updated_files(),
+        "admitted": True,
+        "profile_id": profile_id,
+        "project_id": project_id,
+        "queue_item": queue_item,
+        "repo_id": repo_id,
+        "updated_files": [str(PROJECT_QUEUE_PATH)],
     }
 
 
-def _load_documents(root: Path) -> dict[str, dict[str, Any]]:
-    required_paths = {
-        "queue schema": root / QUEUE_ITEM_SCHEMA_PATH,
-        "repo registry schema": root / REPO_REGISTRY_SCHEMA_PATH,
-        "project queue": root / PROJECT_QUEUE_PATH,
-        "blockers": root / BLOCKERS_PATH,
-        "escalations": root / ESCALATIONS_PATH,
-        "repo registry": root / REPOS_REGISTRY_PATH,
-    }
-    missing = [label for label, path in required_paths.items() if not path.exists()]
-    if missing:
-        raise QueueManagerError(
-            "missing required files: " + ", ".join(sorted(missing))
-        )
-
-    queue_schema = load_json_file(root / QUEUE_ITEM_SCHEMA_PATH)
-    repo_registry_schema = load_json_file(root / REPO_REGISTRY_SCHEMA_PATH)
-
-    documents = {
-        "queue": _load_and_validate_yaml(
-            root / PROJECT_QUEUE_PATH,
-            _build_collection_schema(queue_schema, "queue_items"),
-            "queue/project_queue.yaml",
-        ),
-        "blockers": _load_and_validate_yaml(
-            root / BLOCKERS_PATH,
-            BLOCKERS_DOCUMENT_SCHEMA,
-            "queue/blockers.yaml",
-        ),
-        "escalations": _load_and_validate_yaml(
-            root / ESCALATIONS_PATH,
-            ESCALATIONS_DOCUMENT_SCHEMA,
-            "queue/escalations.yaml",
-        ),
-        "repos": _load_and_validate_yaml(
-            root / REPOS_REGISTRY_PATH,
-            repo_registry_schema,
-            "registry/repos.yaml",
-        ),
-    }
-    return documents
+def _derive_repo_id(project_id: str) -> str:
+    return project_id
 
 
 def _load_and_validate_yaml(
@@ -277,6 +150,9 @@ def _load_and_validate_yaml(
     schema: dict[str, Any],
     display_path: str,
 ) -> dict[str, Any]:
+    if not path.exists():
+        raise QueueManagerError(f"missing required file: {display_path}")
+
     try:
         document = load_yaml_subset_file(path)
     except ValueError as exc:
@@ -286,190 +162,55 @@ def _load_and_validate_yaml(
     if errors:
         raise QueueManagerError("; ".join(sorted(errors)))
 
+    if display_path == str(PROJECT_QUEUE_PATH):
+        for index, queue_item in enumerate(document["queue_items"]):
+            if queue_item["escalation_required"] != "true":
+                raise QueueManagerError(
+                    f"{display_path}.queue_items[{index}].escalation_required must be true"
+                )
+
     return document
 
 
-def _build_collection_schema(
-    item_schema: dict[str, Any],
-    collection_key: str,
-) -> dict[str, Any]:
-    return {
-        "type": "object",
-        "additionalProperties": False,
-        "required": [collection_key],
-        "properties": {
-            collection_key: {
-                "type": "array",
-                "items": item_schema,
-            }
-        },
-    }
+def _require_known_project(projects: list[dict[str, Any]], project_id: str) -> None:
+    if any(entry.get("project_id") == project_id for entry in projects):
+        return
+    raise QueueManagerError(f"unknown project_id '{project_id}'")
 
 
-def _find_repo(repos: list[dict[str, Any]], repo_id: str) -> dict[str, Any]:
-    for entry in repos:
-        if entry["repo_id"] == repo_id:
-            return entry
+def _require_known_repo(repos: list[dict[str, Any]], repo_id: str) -> None:
+    if any(entry.get("repo_id") == repo_id for entry in repos):
+        return
     raise QueueManagerError(f"unknown repo_id '{repo_id}'")
 
 
-def _find_queue_item(
+def _reject_duplicate_project(
     queue_items: list[dict[str, Any]],
-    queue_item_id: str,
-) -> dict[str, Any]:
-    for entry in queue_items:
-        if entry["queue_item_id"] == queue_item_id:
-            return entry
-    raise QueueManagerError(f"unknown queue_item_id '{queue_item_id}'")
-
-
-def _ensure_unique_queue_item(
-    queue_items: list[dict[str, Any]],
-    queue_item_id: str,
+    project_id: str,
 ) -> None:
-    if any(entry["queue_item_id"] == queue_item_id for entry in queue_items):
-        raise QueueManagerError(f"duplicate queue_item_id '{queue_item_id}'")
+    if any(entry.get("project_id") == project_id for entry in queue_items):
+        raise QueueManagerError(f"duplicate project_id '{project_id}'")
 
 
-def _ensure_repo_is_available(repo_entry: dict[str, Any]) -> None:
-    current_queue_item = repo_entry.get("current_queue_item")
-    if current_queue_item is not None:
-        raise QueueManagerError(
-            f"repo_id '{repo_entry['repo_id']}' already has active queue item "
-            f"'{current_queue_item}'"
-        )
-
-
-def _ensure_current_queue_item_matches(
-    repo_entry: dict[str, Any],
-    queue_item_id: str,
-) -> None:
-    current_queue_item = repo_entry.get("current_queue_item")
-    if current_queue_item not in {None, queue_item_id}:
-        raise QueueManagerError(
-            f"repo_id '{repo_entry['repo_id']}' is currently assigned to "
-            f"'{current_queue_item}', not '{queue_item_id}'"
-        )
-
-
-def _apply_reason_state_updates(
+def _build_queue_item(
     *,
-    documents: dict[str, dict[str, Any]],
-    queue_item_id: str,
-    state: str,
-    reason: str | None,
-) -> None:
-    blockers = documents["blockers"]["blockers"]
-    escalations = documents["escalations"]["escalations"]
-
-    if state == BLOCKED_STATE:
-        _upsert_reason_record(
-            blockers,
-            id_key="blocker_id",
-            item_id_prefix="blk",
-            queue_item_id=queue_item_id,
-            reason=reason,
-        )
-        _close_reason_records(escalations, queue_item_id)
-        return
-
-    if state == ESCALATION_REQUIRED_STATE:
-        _upsert_reason_record(
-            escalations,
-            id_key="escalation_id",
-            item_id_prefix="esc",
-            queue_item_id=queue_item_id,
-            reason=reason,
-        )
-        _close_reason_records(blockers, queue_item_id)
-        return
-
-    _close_reason_records(blockers, queue_item_id)
-    _close_reason_records(escalations, queue_item_id)
-
-
-def _upsert_reason_record(
-    records: list[dict[str, Any]],
-    *,
-    id_key: str,
-    item_id_prefix: str,
-    queue_item_id: str,
-    reason: str | None,
-) -> None:
-    assert reason is not None
-
-    for record in records:
-        if record["queue_item_id"] == queue_item_id:
-            record["reason"] = reason
-            record["status"] = "OPEN"
-            return
-
-    records.append(
-        {
-            id_key: f"{item_id_prefix}-{queue_item_id}",
-            "queue_item_id": queue_item_id,
-            "reason": reason,
-            "status": "OPEN",
-        }
-    )
-    records.sort(key=lambda record: str(record[id_key]))
-
-
-def _close_reason_records(
-    records: list[dict[str, Any]],
-    queue_item_id: str,
-) -> None:
-    for record in records:
-        if record["queue_item_id"] == queue_item_id:
-            record["status"] = "CLOSED"
-
-
-def _persist_documents(root: Path, documents: dict[str, dict[str, Any]]) -> None:
-    _write_yaml(root / PROJECT_QUEUE_PATH, documents["queue"])
-    _write_yaml(root / BLOCKERS_PATH, documents["blockers"])
-    _write_yaml(root / ESCALATIONS_PATH, documents["escalations"])
-    _write_yaml(root / REPOS_REGISTRY_PATH, documents["repos"])
-
-
-def _updated_files() -> list[str]:
-    return [
-        str(PROJECT_QUEUE_PATH),
-        str(BLOCKERS_PATH),
-        str(ESCALATIONS_PATH),
-        str(REPOS_REGISTRY_PATH),
-    ]
-
-
-def _build_result(
-    *,
-    action: str,
-    queue_item: dict[str, Any],
+    project_id: str,
     repo_id: str,
-    updated_files: list[str],
+    profile_id: str,
 ) -> dict[str, Any]:
     return {
-        "status": action,
-        "queue_item_id": queue_item["queue_item_id"],
+        "project_id": project_id,
         "repo_id": repo_id,
-        "state": queue_item["state"],
-        "next_action": queue_item["next_action"],
-        "updated_files": updated_files,
+        "profile_id": profile_id,
+        "status": READY_STATUS,
+        "current_slice": None,
+        "blocker": None,
+        "escalation_required": True,
     }
 
 
-def _require_known_state(state: str) -> None:
-    if state not in QUEUE_STATES:
-        allowed_states = ", ".join(QUEUE_STATES)
-        raise QueueManagerError(
-            f"unknown queue state '{state}'; expected one of {allowed_states}"
-        )
-
-
-def _sorted_entries(
-    entries: list[dict[str, Any]],
-    id_key: str,
-) -> list[dict[str, Any]]:
-    return sorted(entries, key=lambda entry: str(entry[id_key]))
+def _queue_item_sort_key(queue_item: dict[str, Any]) -> str:
+    return str(queue_item["project_id"])
 
 
 def _write_yaml(path: Path, document: dict[str, Any]) -> None:
@@ -542,6 +283,10 @@ def _dump_sequence(values: list[Any], indent: int) -> list[str]:
 def _dump_scalar(value: Any) -> str:
     if value is None:
         return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
     if isinstance(value, str):
         return _dump_string(value)
     raise QueueManagerError(

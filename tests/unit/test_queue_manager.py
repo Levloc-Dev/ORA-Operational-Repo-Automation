@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = ROOT / "src"
@@ -15,7 +17,6 @@ if str(SRC_ROOT) not in sys.path:
 from ora.queue.queue_manager import (  # noqa: E402
     QueueManagerError,
     register_queue_item,
-    update_queue_item_state,
 )
 from ora.validation.schema_subset import load_yaml_subset_file  # noqa: E402
 from tools.ora_update_queue import main  # noqa: E402
@@ -23,181 +24,117 @@ from tools.validate_queue import validate_queue  # noqa: E402
 from tools.validate_registry import validate_registry  # noqa: E402
 
 
-def test_register_queue_item_updates_queue_and_registry(tmp_path: Path) -> None:
+def test_register_queue_item_admits_known_project_and_repo(
+    tmp_path: Path,
+) -> None:
     root = make_queue_root(tmp_path)
+    original_repos = (root / "registry/repos.yaml").read_text(encoding="utf-8")
+    original_projects = (root / "registry/projects.yaml").read_text(encoding="utf-8")
 
     result = register_queue_item(
-        repo_id="repo-1",
-        queue_item_id="q-1",
-        state="READY_FOR_SLICE",
-        next_action="implement-slice-6",
+        project_id="repo-1",
+        profile_id="CSL_GOVERNED",
         root=root,
     )
 
     assert result == {
-        "status": "REGISTERED",
-        "queue_item_id": "q-1",
+        "admitted": True,
+        "profile_id": "CSL_GOVERNED",
+        "project_id": "repo-1",
+        "queue_item": {
+            "project_id": "repo-1",
+            "repo_id": "repo-1",
+            "profile_id": "CSL_GOVERNED",
+            "status": "READY_FOR_FIRST_GOVERNED_SLICE",
+            "current_slice": None,
+            "blocker": None,
+            "escalation_required": True,
+        },
         "repo_id": "repo-1",
-        "state": "READY_FOR_SLICE",
-        "next_action": "implement-slice-6",
-        "updated_files": [
-            "queue/project_queue.yaml",
-            "queue/blockers.yaml",
-            "queue/escalations.yaml",
-            "registry/repos.yaml",
-        ],
+        "updated_files": ["queue/project_queue.yaml"],
     }
     assert load_yaml_as_jsonish(root / "queue/project_queue.yaml") == {
         "queue_items": [
             {
-                "queue_item_id": "q-1",
-                "repo_id": "repo-1",
-                "state": "READY_FOR_SLICE",
-                "next_action": "implement-slice-6",
+                **result["queue_item"],
+                "escalation_required": "true",
             }
         ]
     }
-    assert load_yaml_as_jsonish(root / "registry/repos.yaml")["repos"][0][
-        "current_queue_item"
-    ] == "q-1"
-    assert load_yaml_as_jsonish(root / "registry/repos.yaml")["repos"][0][
-        "last_known_status"
-    ] == "READY_FOR_SLICE"
+    assert "escalation_required: true\n" in (
+        root / "queue/project_queue.yaml"
+    ).read_text(encoding="utf-8")
+    assert (root / "registry/repos.yaml").read_text(encoding="utf-8") == original_repos
+    assert (root / "registry/projects.yaml").read_text(encoding="utf-8") == original_projects
     assert validate_queue(root).ok
     assert validate_registry(root).ok
 
 
-def test_update_queue_item_state_opens_and_closes_blockers_and_escalations(
+def test_register_queue_item_rejects_duplicate_project_id_in_queue(
     tmp_path: Path,
 ) -> None:
     root = make_queue_root(tmp_path)
     register_queue_item(
-        repo_id="repo-1",
-        queue_item_id="q-1",
-        state="READY_FOR_SLICE",
-        next_action="implement-slice-6",
+        project_id="repo-1",
+        profile_id="CSL_GOVERNED",
         root=root,
     )
 
-    blocked = update_queue_item_state(
-        "q-1",
-        "BLOCKED",
-        "await-human-input",
-        root=root,
-        reason="missing requirement clarification",
-    )
-    escalated = update_queue_item_state(
-        "q-1",
-        "ESCALATION_REQUIRED",
-        "request-approval",
-        root=root,
-        reason="needs operator decision",
-    )
-    complete = update_queue_item_state(
-        "q-1",
-        "COMPLETE",
-        "archive-when-needed",
-        root=root,
-    )
-
-    assert blocked["previous_state"] == "READY_FOR_SLICE"
-    assert escalated["previous_state"] == "BLOCKED"
-    assert complete["previous_state"] == "ESCALATION_REQUIRED"
-
-    blockers = load_yaml_as_jsonish(root / "queue/blockers.yaml")
-    escalations = load_yaml_as_jsonish(root / "queue/escalations.yaml")
-    repos = load_yaml_as_jsonish(root / "registry/repos.yaml")
-
-    assert blockers == {
-        "blockers": [
-            {
-                "blocker_id": "blk-q-1",
-                "queue_item_id": "q-1",
-                "reason": "missing requirement clarification",
-                "status": "CLOSED",
-            }
-        ]
-    }
-    assert escalations == {
-        "escalations": [
-            {
-                "escalation_id": "esc-q-1",
-                "queue_item_id": "q-1",
-                "reason": "needs operator decision",
-                "status": "CLOSED",
-            }
-        ]
-    }
-    assert repos["repos"][0]["current_queue_item"] is None
-    assert repos["repos"][0]["last_known_status"] == "COMPLETE"
-    assert validate_queue(root).ok
-    assert validate_registry(root).ok
-
-
-def test_register_queue_item_rejects_duplicate_active_repo(tmp_path: Path) -> None:
-    root = make_queue_root(tmp_path)
-    register_queue_item(
-        repo_id="repo-1",
-        queue_item_id="q-1",
-        state="READY_FOR_SLICE",
-        next_action="implement-first-slice",
-        root=root,
-    )
-
-    try:
+    with pytest.raises(QueueManagerError, match="duplicate project_id 'repo-1'"):
         register_queue_item(
-            repo_id="repo-1",
-            queue_item_id="q-2",
-            state="READY_FOR_COMMIT",
-            next_action="commit-first-slice",
+            project_id="repo-1",
+            profile_id="CSL_GOVERNED",
             root=root,
         )
-    except QueueManagerError as exc:
-        assert str(exc) == "repo_id 'repo-1' already has active queue item 'q-1'"
-    else:
-        raise AssertionError("expected duplicate active repo registration to fail")
 
 
-def test_update_queue_item_state_requires_reason_for_blocked_states(
-    tmp_path: Path,
-) -> None:
+def test_register_queue_item_rejects_unknown_project(tmp_path: Path) -> None:
+    root = make_queue_root(tmp_path, projects_yaml="projects: []\n")
+
+    with pytest.raises(QueueManagerError, match="unknown project_id 'repo-1'"):
+        register_queue_item(
+            project_id="repo-1",
+            profile_id="CSL_GOVERNED",
+            root=root,
+        )
+
+
+def test_register_queue_item_rejects_unknown_repo(tmp_path: Path) -> None:
+    root = make_queue_root(tmp_path, repos_yaml="repos: []\n")
+
+    with pytest.raises(QueueManagerError, match="unknown repo_id 'repo-1'"):
+        register_queue_item(
+            project_id="repo-1",
+            profile_id="CSL_GOVERNED",
+            root=root,
+        )
+
+
+def test_register_queue_item_rejects_malformed_queue_file(tmp_path: Path) -> None:
     root = make_queue_root(tmp_path)
-    register_queue_item(
-        repo_id="repo-1",
-        queue_item_id="q-1",
-        state="READY_FOR_SLICE",
-        next_action="implement-slice-6",
-        root=root,
-    )
+    write_text(root / "queue/project_queue.yaml", "queue_items:\n\t- invalid\n")
 
-    try:
-        update_queue_item_state(
-            "q-1",
-            "BLOCKED",
-            "await-human-input",
+    with pytest.raises(QueueManagerError, match="queue/project_queue.yaml:"):
+        register_queue_item(
+            project_id="repo-1",
+            profile_id="CSL_GOVERNED",
             root=root,
         )
-    except QueueManagerError as exc:
-        assert str(exc) == "reason is required when updating state to BLOCKED"
-    else:
-        raise AssertionError("expected blocked transition without reason to fail")
 
 
 def test_ora_update_queue_cli_is_deterministic_on_rejection(
     tmp_path: Path,
     capsys,
 ) -> None:
-    root = make_queue_root(tmp_path)
+    root = make_queue_root(tmp_path, projects_yaml="projects: []\n")
 
     first_exit_code = main(
         [
-            "update-state",
-            "--queue-item-id",
-            "missing-q",
-            "--state",
-            "READY_FOR_SYNC",
-            "--next-action",
-            "sync-dev-main",
+            "admit",
+            "--project-id",
+            "repo-1",
+            "--profile-id",
+            "CSL_GOVERNED",
         ],
         root=root,
     )
@@ -205,13 +142,11 @@ def test_ora_update_queue_cli_is_deterministic_on_rejection(
 
     second_exit_code = main(
         [
-            "update-state",
-            "--queue-item-id",
-            "missing-q",
-            "--state",
-            "READY_FOR_SYNC",
-            "--next-action",
-            "sync-dev-main",
+            "admit",
+            "--project-id",
+            "repo-1",
+            "--profile-id",
+            "CSL_GOVERNED",
         ],
         root=root,
     )
@@ -223,12 +158,20 @@ def test_ora_update_queue_cli_is_deterministic_on_rejection(
     assert second_output.err == ""
     assert first_output.out == second_output.out
     assert json.loads(first_output.out) == {
-        "error": "unknown queue_item_id 'missing-q'",
-        "status": "REJECTED",
+        "admitted": False,
+        "error": "unknown project_id 'repo-1'",
+        "profile_id": "CSL_GOVERNED",
+        "project_id": "repo-1",
+        "repo_id": "repo-1",
     }
 
 
-def make_queue_root(tmp_path: Path) -> Path:
+def make_queue_root(
+    tmp_path: Path,
+    *,
+    repos_yaml: str | None = None,
+    projects_yaml: str | None = None,
+) -> Path:
     root = tmp_path / "root"
     (root / "queue").mkdir(parents=True)
     (root / "registry").mkdir()
@@ -237,7 +180,38 @@ def make_queue_root(tmp_path: Path) -> Path:
 
     write_text(
         root / "schemas/queue/queue_item.schema.json",
-        (ROOT / "schemas/queue/queue_item.schema.json").read_text(encoding="utf-8"),
+        json.dumps(
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "$id": "ora://schemas/queue/queue_item.schema.json",
+                "title": "ORA Queue Item",
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "project_id",
+                    "repo_id",
+                    "profile_id",
+                    "status",
+                    "current_slice",
+                    "blocker",
+                    "escalation_required",
+                ],
+                "properties": {
+                    "project_id": {"type": "string"},
+                    "repo_id": {"type": "string"},
+                    "profile_id": {"type": "string"},
+                    "status": {
+                        "type": "string",
+                        "enum": ["READY_FOR_FIRST_GOVERNED_SLICE"],
+                    },
+                    "current_slice": {"type": "null"},
+                    "blocker": {"type": "null"},
+                    "escalation_required": {"type": "string", "enum": ["true"]},
+                },
+            },
+            indent=2,
+        )
+        + "\n",
     )
     write_text(
         root / "schemas/registry/repo_registry.schema.json",
@@ -256,7 +230,8 @@ def make_queue_root(tmp_path: Path) -> Path:
     write_text(root / "queue/escalations.yaml", "escalations: []\n")
     write_text(
         root / "registry/repos.yaml",
-        (
+        repos_yaml
+        or (
             "repos:\n"
             "  - repo_id: repo-1\n"
             "    repo_name: Repo-One\n"
@@ -275,7 +250,10 @@ def make_queue_root(tmp_path: Path) -> Path:
             "    last_known_status: APPLIED\n"
         ),
     )
-    write_text(root / "registry/projects.yaml", "projects:\n  - project_id: repo-1\n")
+    write_text(
+        root / "registry/projects.yaml",
+        projects_yaml or "projects:\n  - project_id: repo-1\n",
+    )
     return root
 
 
