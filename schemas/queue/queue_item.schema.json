@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ora://schemas/queue/queue_item.schema.json",
+  "title": "ORA Queue Item",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["queue_item_id", "repo_id", "state", "next_action"],
+  "properties": {
+    "queue_item_id": { "type": "string" },
+    "repo_id": { "type": "string" },
+    "state": {
+      "type": "string",
+      "enum": [
+        "PROPOSED",
+        "READY_FOR_BOOTSTRAP",
+        "BOOTSTRAPPING",
+        "READY_FOR_SLICE",
+        "IN_SLICE",
+        "VALIDATING",
+        "BLOCKED",
+        "ESCALATION_REQUIRED",
+        "READY_FOR_COMMIT",
+        "READY_FOR_SYNC",
+        "COMPLETE",
+        "ARCHIVED"
+      ]
+    },
+    "next_action": { "type": "string" }
+  }
+}

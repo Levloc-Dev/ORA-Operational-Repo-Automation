@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ora://schemas/pge/repo_bootstrap_plan.schema.json",
+  "title": "ORA Repo Bootstrap Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "plan_version",
+    "project_name",
+    "project_profile",
+    "create_directories",
+    "write_files",
+    "validators",
+    "escalation_required"
+  ],
+  "properties": {
+    "plan_version": { "type": "string" },
+    "project_name": { "type": "string" },
+    "project_profile": { "type": "string" },
+    "create_directories": { "type": "array", "items": { "type": "string" } },
+    "write_files": { "type": "array", "items": { "type": "string" } },
+    "validators": { "type": "array", "items": { "type": "string" } },
+    "escalation_required": { "type": "boolean" }
+  }
+}

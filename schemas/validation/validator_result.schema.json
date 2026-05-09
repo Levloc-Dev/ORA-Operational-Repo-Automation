@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ora://schemas/validation/validator_result.schema.json",
+  "title": "ORA Validator Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "command",
+    "exit_code",
+    "stdout_hash",
+    "stderr_hash",
+    "duration_ms",
+    "working_directory",
+    "timestamp",
+    "result_status"
+  ],
+  "properties": {
+    "command": { "type": "string" },
+    "exit_code": { "type": "integer" },
+    "stdout_hash": { "type": "string" },
+    "stderr_hash": { "type": "string" },
+    "duration_ms": { "type": "integer", "minimum": 0 },
+    "working_directory": { "type": "string" },
+    "timestamp": { "type": ["string", "null"] },
+    "result_status": { "type": "string", "enum": ["PASS", "FAIL", "ERROR"] }
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ora://schemas/operation/operation_plan.schema.json",
+  "title": "ORA Operation Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["operation_types", "prohibited_operation_types"],
+  "properties": {
+    "operation_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "WRITE_FILE",
+          "CREATE_DIRECTORY",
+          "APPLY_TEMPLATE",
+          "RUN_VALIDATOR",
+          "PREPARE_COMMIT",
+          "GENERATE_HANDOFF_PACKET",
+          "REGISTER_QUEUE_ITEM",
+          "UPDATE_QUEUE_ITEM"
+        ]
+      }
+    },
+    "prohibited_operation_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "ARBITRARY_SHELL",
+          "DEPLOY",
+          "MERGE",
+          "DELETE_REMOTE",
+          "MODIFY_GOVERNANCE_AUTHORITY"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ora://schemas/registry/repo_registry.schema.json",
+  "title": "ORA Repo Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["repos"],
+  "properties": {
+    "repos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repo_id",
+          "repo_name",
+          "project_profile",
+          "local_path",
+          "github_dev_remote",
+          "github_main_remote",
+          "default_branch",
+          "active_branch",
+          "governance_mode",
+          "validator_set",
+          "sync_mode",
+          "current_queue_item",
+          "last_known_status"
+        ],
+        "properties": {
+          "repo_id": { "type": "string" },
+          "repo_name": { "type": "string" },
+          "project_profile": { "type": "string" },
+          "local_path": { "type": "string" },
+          "github_dev_remote": { "type": ["string", "null"] },
+          "github_main_remote": { "type": ["string", "null"] },
+          "default_branch": { "type": "string" },
+          "active_branch": { "type": "string" },
+          "governance_mode": { "type": "string" },
+          "validator_set": { "type": "array", "items": { "type": "string" } },
+          "sync_mode": { "type": "string" },
+          "current_queue_item": { "type": ["string", "null"] },
+          "last_known_status": { "type": "string" }
+        }
+      }
+    }
+  }
+}

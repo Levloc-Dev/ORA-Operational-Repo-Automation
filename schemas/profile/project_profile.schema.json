@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ora://schemas/profile/project_profile.schema.json",
+  "title": "ORA Project Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "profile_id",
+    "required_directories",
+    "optional_directories",
+    "required_governance_artifacts",
+    "required_validators",
+    "branch_strategy",
+    "repo_sync_mode",
+    "initial_files",
+    "prohibited_actions",
+    "escalation_triggers"
+  ],
+  "properties": {
+    "profile_id": { "type": "string" },
+    "required_directories": { "type": "array", "items": { "type": "string" } },
+    "optional_directories": { "type": "array", "items": { "type": "string" } },
+    "required_governance_artifacts": { "type": "array", "items": { "type": "string" } },
+    "required_validators": { "type": "array", "items": { "type": "string" } },
+    "branch_strategy": { "type": "string" },
+    "repo_sync_mode": { "type": "string" },
+    "initial_files": { "type": "array", "items": { "type": "string" } },
+    "prohibited_actions": { "type": "array", "items": { "type": "string" } },
+    "escalation_triggers": { "type": "array", "items": { "type": "string" } }
+  }
+}

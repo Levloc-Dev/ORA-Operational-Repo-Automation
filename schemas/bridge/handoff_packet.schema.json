@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ora://schemas/bridge/handoff_packet.schema.json",
+  "title": "ORA Handoff Packet",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["bridge_type", "packet_version", "payload", "execution_mode"],
+  "properties": {
+    "bridge_type": { "type": "string" },
+    "packet_version": { "type": "string" },
+    "payload": { "type": "object" },
+    "execution_mode": { "type": "string", "enum": ["packet_only"] }
+  }
+}

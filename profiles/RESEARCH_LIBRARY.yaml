@@ -1,0 +1,23 @@
+profile_id: RESEARCH_LIBRARY
+required_directories:
+  - docs
+  - planning
+  - schemas
+optional_directories:
+  - tests
+required_governance_artifacts:
+  - governance/policies/ORA_FAIL_CLOSED_POLICY.md
+required_validators:
+  - tools/validate_repo_layout.py
+branch_strategy: research_iteration
+repo_sync_mode: packet_review_required
+initial_files:
+  - README.md
+  - PROJECT_CONTEXT.md
+prohibited_actions:
+  - unrestricted_shell
+  - deploy
+  - autonomous_merge
+escalation_triggers:
+  - validation_failure
+  - source_context_gap

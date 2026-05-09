@@ -8,11 +8,15 @@ This repository is bootstrapped as a narrow governed baseline only:
 - planning scaffold
 - docs/contracts scaffold
 - deterministic validation entrypoints
+- Slice 1 ORA architecture scaffold
 
 Excluded from repo birth:
 - runtime automation
 - PGE implementation
 - unrestricted shell execution
 - autonomous orchestration
+- deployment
+- autonomous merges
+- self-modification
 
 See [PROJECT_CONTEXT.md](/home/levloc/dev/ORA-Operational-Repo-Automation/PROJECT_CONTEXT.md) for project definition and boundaries.

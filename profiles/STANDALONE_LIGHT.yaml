@@ -1,0 +1,23 @@
+profile_id: STANDALONE_LIGHT
+required_directories:
+  - docs
+  - schemas
+optional_directories:
+  - tests
+  - planning
+required_governance_artifacts:
+  - governance/policies/ORA_FAIL_CLOSED_POLICY.md
+required_validators:
+  - tools/validate_repo_layout.py
+branch_strategy: simple_feature_branch
+repo_sync_mode: local_only
+initial_files:
+  - README.md
+  - PROJECT_CONTEXT.md
+prohibited_actions:
+  - unrestricted_shell
+  - deploy
+  - autonomous_merge
+escalation_triggers:
+  - validation_failure
+  - missing_profile_data

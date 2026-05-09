@@ -1,0 +1,25 @@
+profile_id: STANDALONE_COMMERCIAL
+required_directories:
+  - docs
+  - schemas
+  - governance
+optional_directories:
+  - tests
+  - planning
+required_governance_artifacts:
+  - governance/policies/ORA_CAPABILITY_BOUNDARY.md
+required_validators:
+  - tools/validate_repo_layout.py
+  - tools/validate_profiles.py
+branch_strategy: staged_release
+repo_sync_mode: packet_review_required
+initial_files:
+  - README.md
+  - PROJECT_CONTEXT.md
+prohibited_actions:
+  - unrestricted_shell
+  - deploy
+  - autonomous_merge
+escalation_triggers:
+  - validation_failure
+  - release_decision_required
