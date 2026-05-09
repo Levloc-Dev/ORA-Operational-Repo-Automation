@@ -38,6 +38,13 @@ PROJECT_REQUEST_SCHEMA = {
 PROFILE_SCHEMA_PATH = Path("schemas/profile/project_profile.schema.json")
 PLAN_SCHEMA_PATH = Path("schemas/pge/repo_bootstrap_plan.schema.json")
 PLAN_VERSION = "1.0.0"
+DIRECTORY_OPERATION_TYPE = "CREATE_DIRECTORY"
+FILE_OPERATION_TYPE = "WRITE_FILE"
+DIRECTORY_CONTENT_STRATEGY = "DECLARE_DIRECTORY"
+TEMPLATE_CONTENT_STRATEGY = "RENDER_TEMPLATE"
+CANONICAL_SOURCE_CONTENT_STRATEGY = "COPY_CANONICAL_SOURCE"
+LOCAL_REPO_WRITE_AUTHORITY = "LOCAL_REPO_WRITE_ESCALATION"
+README_TEMPLATE_PATH = "templates/common/README.template.md"
 
 
 class BootstrapPlanError(ValueError):
@@ -176,17 +183,63 @@ def _assemble_plan(
     create_directories = _stable_unique(
         [*profile["required_directories"], *_parent_directories(write_files)]
     )
+    planned_operations = [
+        *_build_directory_operations(create_directories),
+        *_build_file_operations(write_files),
+    ]
 
     return {
         "plan_version": PLAN_VERSION,
         "project_name": project_request["repo_name"],
         "project_profile": profile["profile_id"],
-        "create_directories": create_directories,
-        "write_files": write_files,
+        "planned_operations": planned_operations,
         "validators": _stable_unique(profile["required_validators"]),
         # Slice 3 is a dry-run planner only; execution must remain escalated.
         "escalation_required": True,
     }
+
+
+def _build_directory_operations(paths: list[str]) -> list[dict[str, Any]]:
+    return [
+        {
+            "operation_id": _build_operation_id(DIRECTORY_OPERATION_TYPE, path),
+            "operation_type": DIRECTORY_OPERATION_TYPE,
+            "target_path": path,
+            "source_template": None,
+            "content_strategy": DIRECTORY_CONTENT_STRATEGY,
+            "authority_required": LOCAL_REPO_WRITE_AUTHORITY,
+            "validation_required": True,
+        }
+        for path in paths
+    ]
+
+
+def _build_file_operations(paths: list[str]) -> list[dict[str, Any]]:
+    operations: list[dict[str, Any]] = []
+    for path in paths:
+        source_template, content_strategy = _resolve_file_source(path)
+        operations.append(
+            {
+                "operation_id": _build_operation_id(FILE_OPERATION_TYPE, path),
+                "operation_type": FILE_OPERATION_TYPE,
+                "target_path": path,
+                "source_template": source_template,
+                "content_strategy": content_strategy,
+                "authority_required": LOCAL_REPO_WRITE_AUTHORITY,
+                "validation_required": True,
+            }
+        )
+    return operations
+
+
+def _resolve_file_source(path: str) -> tuple[str, str]:
+    if path == "README.md":
+        return README_TEMPLATE_PATH, TEMPLATE_CONTENT_STRATEGY
+    return path, CANONICAL_SOURCE_CONTENT_STRATEGY
+
+
+def _build_operation_id(operation_type: str, target_path: str) -> str:
+    return f"{operation_type}:{target_path}"
 
 
 def _parent_directories(paths: list[str]) -> list[str]:

@@ -8,8 +8,7 @@
     "plan_version",
     "project_name",
     "project_profile",
-    "create_directories",
-    "write_files",
+    "planned_operations",
     "validators",
     "escalation_required"
   ],
@@ -17,8 +16,54 @@
     "plan_version": { "type": "string" },
     "project_name": { "type": "string" },
     "project_profile": { "type": "string" },
-    "create_directories": { "type": "array", "items": { "type": "string" } },
-    "write_files": { "type": "array", "items": { "type": "string" } },
+    "planned_operations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operation_id",
+          "operation_type",
+          "target_path",
+          "source_template",
+          "content_strategy",
+          "authority_required",
+          "validation_required"
+        ],
+        "properties": {
+          "operation_id": { "type": "string" },
+          "operation_type": {
+            "type": "string",
+            "enum": [
+              "CREATE_DIRECTORY",
+              "WRITE_FILE"
+            ]
+          },
+          "target_path": { "type": "string" },
+          "source_template": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content_strategy": {
+            "type": "string",
+            "enum": [
+              "DECLARE_DIRECTORY",
+              "RENDER_TEMPLATE",
+              "COPY_CANONICAL_SOURCE"
+            ]
+          },
+          "authority_required": {
+            "type": "string",
+            "enum": [
+              "LOCAL_REPO_WRITE_ESCALATION"
+            ]
+          },
+          "validation_required": { "type": "boolean" }
+        }
+      }
+    },
     "validators": { "type": "array", "items": { "type": "string" } },
     "escalation_required": { "type": "boolean" }
   }
