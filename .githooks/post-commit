@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "post-commit hook placeholder: no automated mutation is installed"

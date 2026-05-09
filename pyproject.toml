@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ora-operational-repo-automation"
+version = "0.1.0"
+description = "Governed bootstrap baseline for ORA."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "Levloc" }
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

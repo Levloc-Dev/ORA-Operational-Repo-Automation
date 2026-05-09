@@ -1,0 +1,9 @@
+template_name: CSL_STANDARD_REPO_TEMPLATE
+template_version: 1.0.0
+profile: CSL_GOVERNED
+bootstrap_mode: repo_birth
+bootstrap_status: baseline_only
+seed_material_root: _bootstrap/
+includes_runtime_automation: false
+includes_pge: false
+allows_unrestricted_shell_execution: false

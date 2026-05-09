@@ -1,0 +1,11 @@
+template_name: CSL_STANDARD_REPO_TEMPLATE
+template_version: 1.0.0
+review_document: governance/workflows/governed_specs/ORA_CSL_CANONICAL_REPO_TEMPLATE_REVIEW.md
+project_context_document: PROJECT_CONTEXT.md
+contracts_document: docs/contracts/CSL_STANDARD_REPO_TEMPLATE.md
+bootstrap_mode: repo_birth
+generation_date: 2026-05-09
+generating_system: codex
+notes:
+  - Seed documents were moved from _bootstrap/ into canonical governed locations.
+  - Runtime automation and PGE were intentionally excluded at repo birth.
