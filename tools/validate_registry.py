@@ -35,6 +35,8 @@ def validate_registry(root: Path = ROOT) -> ValidationResult:
 
     if not repo_schema_path.exists():
         errors.append(f"missing file: {REPO_SCHEMA_PATH}")
+    if not project_schema_path.exists():
+        errors.append(f"missing file: {PROJECT_REGISTRY_SCHEMA_PATH}")
     if not repos_path.exists():
         errors.append(f"missing file: {REPOS_PATH}")
     if not projects_path.exists():
@@ -49,22 +51,14 @@ def validate_registry(root: Path = ROOT) -> ValidationResult:
         else:
             errors.extend(validate_instance(document, schema, REPOS_PATH))
 
-    if projects_path.exists():
-        if not project_schema_path.exists():
-            errors.append(
-                "TODO: add schemas/registry/project_registry.schema.json to validate "
-                "registry/projects.yaml deterministically"
-            )
+    if project_schema_path.exists() and projects_path.exists():
+        project_schema = load_json_file(project_schema_path)
+        try:
+            project_document = load_yaml_subset_file(projects_path)
+        except ValueError as exc:
+            errors.append(f"{PROJECTS_PATH}: {exc}")
         else:
-            project_schema = load_json_file(project_schema_path)
-            try:
-                project_document = load_yaml_subset_file(projects_path)
-            except ValueError as exc:
-                errors.append(f"{PROJECTS_PATH}: {exc}")
-            else:
-                errors.extend(
-                    validate_instance(project_document, project_schema, PROJECTS_PATH)
-                )
+            errors.extend(validate_instance(project_document, project_schema, PROJECTS_PATH))
 
     return ValidationResult(tuple(errors))
 

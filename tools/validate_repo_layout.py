@@ -43,6 +43,7 @@ REQUIRED_PATHS = [
     "schemas/profile/project_profile.schema.json",
     "schemas/pge/repo_bootstrap_plan.schema.json",
     "schemas/registry/repo_registry.schema.json",
+    "schemas/registry/project_registry.schema.json",
     "schemas/queue/queue_item.schema.json",
     "schemas/operation/operation_plan.schema.json",
     "schemas/validation/validator_result.schema.json",

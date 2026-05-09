@@ -159,7 +159,7 @@ def test_validate_profiles_rejects_missing_fail_closed_action(tmp_path: Path) ->
     assert any("autonomous_merge" in error for error in result.errors)
 
 
-def test_validate_registry_fails_closed_without_project_schema(tmp_path: Path) -> None:
+def test_validate_registry_accepts_valid_project_registry(tmp_path: Path) -> None:
     root = tmp_path
     _write_json(
         root / "schemas/registry/repo_registry.schema.json",
@@ -183,19 +183,38 @@ def test_validate_registry_fails_closed_without_project_schema(tmp_path: Path) -
             },
         },
     )
+    _write_json(
+        root / "schemas/registry/project_registry.schema.json",
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["projects"],
+            "properties": {
+                "projects": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["project_id"],
+                        "properties": {
+                            "project_id": {"type": "string"},
+                        },
+                    },
+                }
+            },
+        },
+    )
     _write_text(root / "registry/repos.yaml", "repos: []\n")
-    _write_text(root / "registry/projects.yaml", "projects: []\n")
+    _write_text(root / "registry/projects.yaml", "projects:\n  - project_id: sample-project\n")
 
     result = validate_registry(root)
 
-    assert not result.ok
-    assert result.errors == (
-        "TODO: add schemas/registry/project_registry.schema.json to validate "
-        "registry/projects.yaml deterministically",
-    )
+    assert result.ok
 
 
-def test_validate_registry_uses_project_schema_when_present(tmp_path: Path) -> None:
+def test_validate_registry_rejects_project_registry_missing_required_field(
+    tmp_path: Path,
+) -> None:
     root = tmp_path
     _write_json(
         root / "schemas/registry/repo_registry.schema.json",
@@ -234,6 +253,94 @@ def test_validate_registry_uses_project_schema_when_present(tmp_path: Path) -> N
 
     assert not result.ok
     assert "registry/projects.yaml.projects[0]: missing required key 'project_id'" in result.errors
+    assert "registry/projects.yaml.projects[0]: unexpected key 'invalid_key'" in result.errors
+
+
+def test_validate_registry_rejects_project_registry_unknown_field(tmp_path: Path) -> None:
+    root = tmp_path
+    _write_json(
+        root / "schemas/registry/repo_registry.schema.json",
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["repos"],
+            "properties": {"repos": {"type": "array", "items": {"type": "object"}}},
+        },
+    )
+    _write_json(
+        root / "schemas/registry/project_registry.schema.json",
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["projects"],
+            "properties": {
+                "projects": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["project_id"],
+                        "properties": {
+                            "project_id": {"type": "string"},
+                        },
+                    },
+                }
+            },
+        },
+    )
+    _write_text(root / "registry/repos.yaml", "repos: []\n")
+    _write_text(
+        root / "registry/projects.yaml",
+        "projects:\n  - project_id: sample\n    owner: levloc\n",
+    )
+
+    result = validate_registry(root)
+
+    assert not result.ok
+    assert "registry/projects.yaml.projects[0]: unexpected key 'owner'" in result.errors
+
+
+def test_validate_registry_fails_closed_on_malformed_project_registry(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path
+    _write_json(
+        root / "schemas/registry/repo_registry.schema.json",
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["repos"],
+            "properties": {"repos": {"type": "array", "items": {"type": "object"}}},
+        },
+    )
+    _write_json(
+        root / "schemas/registry/project_registry.schema.json",
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["projects"],
+            "properties": {
+                "projects": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["project_id"],
+                        "properties": {
+                            "project_id": {"type": "string"},
+                        },
+                    },
+                }
+            },
+        },
+    )
+    _write_text(root / "registry/repos.yaml", "repos: []\n")
+    _write_text(root / "registry/projects.yaml", "projects:\n\t- project_id: sample\n")
+
+    result = validate_registry(root)
+
+    assert not result.ok
+    assert "registry/projects.yaml:" in result.errors[0]
 
 
 def test_validate_queue_accepts_empty_collections(tmp_path: Path) -> None:
