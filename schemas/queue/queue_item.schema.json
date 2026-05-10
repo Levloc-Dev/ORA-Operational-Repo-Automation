@@ -4,27 +4,22 @@
   "title": "ORA Queue Item",
   "type": "object",
   "additionalProperties": false,
-  "required": ["queue_item_id", "repo_id", "state", "next_action"],
+  "required": [
+    "project_id",
+    "repo_id",
+    "profile_id",
+    "status",
+    "current_slice",
+    "blocker",
+    "escalation_required"
+  ],
   "properties": {
-    "queue_item_id": { "type": "string" },
+    "project_id": { "type": "string" },
     "repo_id": { "type": "string" },
-    "state": {
-      "type": "string",
-      "enum": [
-        "PROPOSED",
-        "READY_FOR_BOOTSTRAP",
-        "BOOTSTRAPPING",
-        "READY_FOR_SLICE",
-        "IN_SLICE",
-        "VALIDATING",
-        "BLOCKED",
-        "ESCALATION_REQUIRED",
-        "READY_FOR_COMMIT",
-        "READY_FOR_SYNC",
-        "COMPLETE",
-        "ARCHIVED"
-      ]
-    },
-    "next_action": { "type": "string" }
+    "profile_id": { "type": "string" },
+    "status": { "type": "string", "enum": ["READY_FOR_FIRST_GOVERNED_SLICE"] },
+    "current_slice": { "type": "null" },
+    "blocker": { "type": "null" },
+    "escalation_required": { "type": "string", "enum": ["true"] }
   }
 }

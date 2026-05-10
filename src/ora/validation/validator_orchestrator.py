@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ora.pge.bootstrap_plan import BootstrapPlanError, load_project_profile
 from ora.validation.schema_subset import load_yaml_subset_file, validate_instance
 
 
@@ -123,63 +124,6 @@ QUEUE_SCHEMA = {
     },
 }
 
-PROFILE_VALIDATOR_RULES: dict[str, dict[str, list[str]]] = {
-    "CSL_GOVERNED": {
-        "validators": [
-            "tools/validate_repo_layout.py",
-            "tools/validate_profiles.py",
-        ],
-        "prohibited_actions": [
-            "unrestricted_shell",
-            "deploy",
-            "autonomous_merge",
-            "self_modify_governance",
-        ],
-    },
-    "STANDALONE_LIGHT": {
-        "validators": [
-            "tools/validate_repo_layout.py",
-        ],
-        "prohibited_actions": [
-            "unrestricted_shell",
-            "deploy",
-            "autonomous_merge",
-        ],
-    },
-    "STANDALONE_COMMERCIAL": {
-        "validators": [
-            "tools/validate_repo_layout.py",
-            "tools/validate_profiles.py",
-        ],
-        "prohibited_actions": [
-            "unrestricted_shell",
-            "deploy",
-            "autonomous_merge",
-        ],
-    },
-    "RESEARCH_LIBRARY": {
-        "validators": [
-            "tools/validate_repo_layout.py",
-        ],
-        "prohibited_actions": [
-            "unrestricted_shell",
-            "deploy",
-            "autonomous_merge",
-        ],
-    },
-    "SANDBOX": {
-        "validators": [
-            "tools/validate_repo_layout.py",
-        ],
-        "prohibited_actions": [
-            "unrestricted_shell",
-            "deploy",
-            "autonomous_merge",
-        ],
-    },
-}
-
-
 class ValidatorOrchestratorError(ValueError):
     """Raised when validator planning cannot proceed safely."""
 
@@ -291,11 +235,12 @@ def _require_repo_entry(
 
 
 def _resolve_profile_rules(profile_id: str) -> tuple[list[str], list[str]]:
-    rules = PROFILE_VALIDATOR_RULES.get(profile_id)
-    if rules is None:
-        raise ValidatorOrchestratorError(f"unsupported profile_id '{profile_id}'")
+    try:
+        profile = load_project_profile(profile_id, root=ROOT)
+    except BootstrapPlanError as exc:
+        raise ValidatorOrchestratorError(str(exc)) from exc
 
-    return list(rules["validators"]), list(rules["prohibited_actions"])
+    return list(profile["required_validators"]), list(profile["prohibited_actions"])
 
 
 def _validate_joined_state(

@@ -4,19 +4,20 @@ Profile Registry:
 - declares project scaffolds and validator sets
 
 PGE:
-- reserved for deterministic bootstrap planning only
+- deterministic bootstrap planning and explicit local scaffold writing only
 
 Registry:
-- stores machine-readable repo metadata
+- stores admitted machine-readable repo metadata
 
 Queue:
-- stores closed-set operational state
+- stores deterministic initial governed admission state only
 
 Operations:
 - reserved for allowlisted operation planning only
 
 Validation:
-- static Slice 1 checks only
+- deterministic schema validation plus validator plan generation only
+- validator selection is sourced from profile YAML and checked against admitted registry state
 
 Bridges:
-- packet-builder placeholders only
+- governed packet generation only for supported bridges

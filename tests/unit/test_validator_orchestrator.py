@@ -147,6 +147,8 @@ def make_validator_root(
     root = tmp_path / "root"
     (root / "registry").mkdir(parents=True)
     (root / "queue").mkdir()
+    (root / "profiles").mkdir()
+    (root / "schemas/profile").mkdir(parents=True)
 
     write_text(
         root / "registry/projects.yaml",
@@ -160,6 +162,16 @@ def make_validator_root(
         root / "registry/repos.yaml",
         repos_yaml
         or build_repos_yaml(profile_id),
+    )
+    write_text(
+        root / "profiles" / f"{profile_id}.yaml",
+        (ROOT / "profiles" / f"{profile_id}.yaml").read_text(encoding="utf-8"),
+    )
+    write_text(
+        root / "schemas/profile/project_profile.schema.json",
+        (ROOT / "schemas/profile/project_profile.schema.json").read_text(
+            encoding="utf-8"
+        ),
     )
     write_text(
         root / "queue/project_queue.yaml",

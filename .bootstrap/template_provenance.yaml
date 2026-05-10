@@ -9,3 +9,5 @@ generating_system: codex
 notes:
   - Seed documents were moved from _bootstrap/ into canonical governed locations.
   - Runtime automation and PGE were intentionally excluded at repo birth.
+  - This file records the historical repo-birth seed state only.
+  - Post-bootstrap implemented slices are tracked in .bootstrap/bootstrap_manifest.yaml.

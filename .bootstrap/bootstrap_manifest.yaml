@@ -2,8 +2,15 @@ template_name: CSL_STANDARD_REPO_TEMPLATE
 template_version: 1.0.0
 profile: CSL_GOVERNED
 bootstrap_mode: repo_birth
-bootstrap_status: baseline_only
+bootstrap_status: repo_state_reconciled_post_bootstrap
 seed_material_root: _bootstrap/
-includes_runtime_automation: false
-includes_pge: false
+includes_runtime_automation: true
+includes_pge: true
 allows_unrestricted_shell_execution: false
+implemented_slices:
+  - deterministic_pge_bootstrap_plan_generation
+  - local_scaffold_writer
+  - repo_registry_admission
+  - queue_admission
+  - validator_plan_generation
+  - governed_handoff_packet_generation

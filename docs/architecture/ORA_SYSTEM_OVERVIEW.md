@@ -1,16 +1,20 @@
 # ORA System Overview
 
-ORA v1 is a deterministic, governed repository scaffold for operational repo
-automation.
+ORA v1 is a deterministic, governed operational automation repository with a
+narrow implemented MVP surface.
 
-Slice 1 includes:
-- repository structure
-- profile declarations
-- schema stubs
-- registry and queue data files
-- validation entry points
+Current implemented slices include:
+- repository structure and source context
+- profile declarations and schema-backed validation
+- deterministic PGE bootstrap plan generation
+- explicit local scaffold writing
+- repo registry admission
+- initial queue admission
+- governed handoff packet generation
+- validator plan generation only
 
-Slice 1 excludes runtime execution, deployment, merge automation, and
+The current boundary still excludes autonomous runtime execution, deployment,
+merge automation, GitHub bridge execution, dashboard implementation, and
 unrestricted shell authority.
 
 Primary architecture reference:

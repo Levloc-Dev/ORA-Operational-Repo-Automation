@@ -2,21 +2,22 @@
 
 ORA is a CSL-governed repository for operational repo automation.
 
-This repository is bootstrapped as a narrow governed baseline only:
-- governance scaffold
-- memory scaffold
-- planning scaffold
-- docs/contracts scaffold
-- deterministic validation entrypoints
-- Slice 1 ORA architecture scaffold
+The current repository state is a narrow governed MVP with these implemented slices:
+- deterministic PGE bootstrap plan generation
+- explicit local scaffold writing with required confirmation
+- repo registry admission
+- queue admission
+- validator plan generation only
+- governed handoff packet generation
+- deterministic validation entrypoints and supporting schemas
 
-Excluded from repo birth:
-- runtime automation
-- PGE implementation
-- unrestricted shell execution
-- autonomous orchestration
-- deployment
-- autonomous merges
-- self-modification
+Current fail-closed boundary:
+- no autonomous execution engine
+- no GitHub or network bridge execution
+- no unrestricted shell execution
+- no deployment
+- no autonomous merges
+- no dashboard implementation
+- no PGE expansion beyond the implemented local planning and scaffold flow
 
 See [PROJECT_CONTEXT.md](/home/levloc/dev/ORA-Operational-Repo-Automation/PROJECT_CONTEXT.md) for project definition and boundaries.

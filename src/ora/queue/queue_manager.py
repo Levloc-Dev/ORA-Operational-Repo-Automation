@@ -205,7 +205,7 @@ def _build_queue_item(
         "status": READY_STATUS,
         "current_slice": None,
         "blocker": None,
-        "escalation_required": True,
+        "escalation_required": "true",
     }
 
 

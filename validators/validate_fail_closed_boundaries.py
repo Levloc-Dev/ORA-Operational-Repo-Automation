@@ -11,7 +11,7 @@ from typing import NamedTuple
 
 ROOT = Path(__file__).resolve().parent.parent
 REQUIRED_TEXT = {
-    "README.md": "Excluded from repo birth:",
+    "README.md": "Current fail-closed boundary:",
     "governance/policies/ORA_CAPABILITY_BOUNDARY.md": "Not allowed in Slice 1:",
     "governance/policies/ORA_FAIL_CLOSED_POLICY.md": "must stop without continuation",
     "src/ora/operations/runner.py": "not implemented in Slice 1",

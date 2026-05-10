@@ -48,18 +48,13 @@ def test_register_queue_item_admits_known_project_and_repo(
             "status": "READY_FOR_FIRST_GOVERNED_SLICE",
             "current_slice": None,
             "blocker": None,
-            "escalation_required": True,
+            "escalation_required": "true",
         },
         "repo_id": "repo-1",
         "updated_files": ["queue/project_queue.yaml"],
     }
     assert load_yaml_as_jsonish(root / "queue/project_queue.yaml") == {
-        "queue_items": [
-            {
-                **result["queue_item"],
-                "escalation_required": "true",
-            }
-        ]
+        "queue_items": [result["queue_item"]]
     }
     assert "escalation_required: true\n" in (
         root / "queue/project_queue.yaml"

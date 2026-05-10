@@ -350,12 +350,26 @@ def test_validate_queue_accepts_empty_collections(tmp_path: Path) -> None:
         {
             "type": "object",
             "additionalProperties": False,
-            "required": ["queue_item_id", "repo_id", "state", "next_action"],
+            "required": [
+                "project_id",
+                "repo_id",
+                "profile_id",
+                "status",
+                "current_slice",
+                "blocker",
+                "escalation_required",
+            ],
             "properties": {
-                "queue_item_id": {"type": "string"},
+                "project_id": {"type": "string"},
                 "repo_id": {"type": "string"},
-                "state": {"type": "string", "enum": ["PROPOSED"]},
-                "next_action": {"type": "string"},
+                "profile_id": {"type": "string"},
+                "status": {
+                    "type": "string",
+                    "enum": ["READY_FOR_FIRST_GOVERNED_SLICE"],
+                },
+                "current_slice": {"type": "null"},
+                "blocker": {"type": "null"},
+                "escalation_required": {"type": "string", "enum": ["true"]},
             },
         },
     )
@@ -375,12 +389,26 @@ def test_validate_queue_rejects_invalid_blocker_shape(tmp_path: Path) -> None:
         {
             "type": "object",
             "additionalProperties": False,
-            "required": ["queue_item_id", "repo_id", "state", "next_action"],
+            "required": [
+                "project_id",
+                "repo_id",
+                "profile_id",
+                "status",
+                "current_slice",
+                "blocker",
+                "escalation_required",
+            ],
             "properties": {
-                "queue_item_id": {"type": "string"},
+                "project_id": {"type": "string"},
                 "repo_id": {"type": "string"},
-                "state": {"type": "string", "enum": ["PROPOSED"]},
-                "next_action": {"type": "string"},
+                "profile_id": {"type": "string"},
+                "status": {
+                    "type": "string",
+                    "enum": ["READY_FOR_FIRST_GOVERNED_SLICE"],
+                },
+                "current_slice": {"type": "null"},
+                "blocker": {"type": "null"},
+                "escalation_required": {"type": "string", "enum": ["true"]},
             },
         },
     )
@@ -389,10 +417,13 @@ def test_validate_queue_rejects_invalid_blocker_shape(tmp_path: Path) -> None:
         dedent(
             """
             queue_items:
-              - queue_item_id: q-1
+              - project_id: repo-1
                 repo_id: repo-1
-                state: PROPOSED
-                next_action: validate
+                profile_id: CSL_GOVERNED
+                status: READY_FOR_FIRST_GOVERNED_SLICE
+                current_slice: null
+                blocker: null
+                escalation_required: true
             """
         ).strip()
         + "\n",

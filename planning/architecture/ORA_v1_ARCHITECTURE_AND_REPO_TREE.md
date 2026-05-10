@@ -2,7 +2,7 @@
 
 ## Status
 
-Recommended governed v1 architecture for incremental implementation.
+Governed v1 architecture with early MVP slices implemented and reconciled.
 
 ## Source Context
 
@@ -10,19 +10,24 @@ This design is derived from `ORA_SOURCE_CONTEXT_v1.0.0.md`, which defines ORA as
 
 ## Core Recommendation
 
-ORA v1 should be implemented as a narrow, deterministic operational automation platform, not as a broad autonomous agent.
+ORA v1 is being implemented as a narrow, deterministic operational automation platform, not as a broad autonomous agent.
 
-The first version should focus on:
+The current implemented MVP surface in this repository includes:
 
 1. project profiles
 2. repo bootstrap automation through PGE
 3. repo registry
 4. direct file-writing workflows
 5. validator orchestration
-6. commit preparation
-7. Dev/Main sync support
-8. project queue tracking
-9. execution handoff packets for ChatGPT, Codex, Claude, GitHub, and local repos
+6. project queue tracking through initial governed admission only
+7. execution handoff packets for ChatGPT, Codex, and Claude
+
+The following areas remain intentionally unimplemented in the current repo state:
+- validator execution
+- GitHub repo creation or bridge execution
+- Dev/Main sync execution
+- dashboard implementation
+- unrestricted runtime activation
 
 ORA v1 should explicitly exclude unrestricted shell execution, autonomous deployment, autonomous merges, recursive self-modification, and unrestricted runtime authority.
 
@@ -431,15 +436,22 @@ Register scaffolded repos in `registry/repos.yaml`.
 
 ## Slice 6 — Queue manager
 
-Register queue items and update closed-set queue states.
+Implemented for deterministic initial governed admission only. The canonical queue item shape is:
+- `project_id`
+- `repo_id`
+- `profile_id`
+- `status: READY_FOR_FIRST_GOVERNED_SLICE`
+- `current_slice: null`
+- `blocker: null`
+- `escalation_required: true`
 
 ## Slice 7 — Validator runner
 
-Run declared validators only. Capture deterministic evidence.
+Implemented as deterministic validator plan generation only. Validator selection is sourced from the declared profile YAML and must match `registry/repos.yaml.validator_set`. There is still no general validator execution engine in this repo.
 
 ## Slice 8 — Handoff packet builders
 
-Generate Codex, Claude, ChatGPT, GitHub, and local operation packets.
+Implemented for governed ChatGPT, Codex, and Claude packet generation only. No bridge dispatch or execution is present.
 
 ## Slice 9 — Dev/Main sync packet generation
 
