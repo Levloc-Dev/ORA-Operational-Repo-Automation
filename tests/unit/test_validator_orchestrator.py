@@ -19,6 +19,8 @@ from ora.validation.validator_orchestrator import (  # noqa: E402
     build_validator_plan,
     render_validator_plan_json,
 )
+from ora.validation.result_capture import build_result_artifact_path  # noqa: E402
+from tools.ora_execute_validator import main as execute_main  # noqa: E402
 from tools.ora_run_validators import main  # noqa: E402
 
 
@@ -136,6 +138,186 @@ def test_ora_run_validators_rejects_missing_repo_registry_entry(
     }
 
 
+def test_ora_execute_validator_writes_result_artifact_for_allowed_validator(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    root = make_validator_root(tmp_path, profile_id="CSL_GOVERNED")
+
+    exit_code = execute_main(
+        [
+            "--project-id",
+            "repo-1",
+            "--validator-id",
+            "tools/validate_profiles.py",
+        ],
+        root=root,
+    )
+    output = capsys.readouterr()
+
+    assert exit_code == 0
+    document = json.loads(output.out)
+    assert document["result_status"] == "PASS"
+    assert document["validator_id"] == "tools/validate_profiles.py"
+    assert document["failure_reason"] is None
+    assert document["validator_output"] == {
+        "errors": [],
+        "ok": True,
+        "summary": "profile validation passed",
+        "validator_id": "tools/validate_profiles.py",
+    }
+
+    artifact_path = build_result_artifact_path(
+        project_id="repo-1",
+        validator_id="tools/validate_profiles.py",
+        output_format="json",
+        root=root,
+    )
+    assert artifact_path.exists()
+    assert json.loads(artifact_path.read_text(encoding="utf-8")) == document
+
+
+def test_ora_execute_validator_rejects_undeclared_validator_request(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    root = make_validator_root(tmp_path, profile_id="STANDALONE_LIGHT")
+
+    exit_code = execute_main(
+        [
+            "--project-id",
+            "repo-1",
+            "--validator-id",
+            "tools/validate_profiles.py",
+        ],
+        root=root,
+    )
+    output = capsys.readouterr()
+
+    assert exit_code == 1
+    assert json.loads(output.out) == {
+        "error": "undeclared validator execution request 'tools/validate_profiles.py' for project_id 'repo-1'",
+        "executed": False,
+        "project_id": "repo-1",
+        "validator_id": "tools/validate_profiles.py",
+    }
+
+
+def test_ora_execute_validator_rejects_unknown_validator_id(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    root = make_validator_root(tmp_path, profile_id="CSL_GOVERNED")
+
+    exit_code = execute_main(
+        [
+            "--project-id",
+            "repo-1",
+            "--validator-id",
+            "tools/unknown.py",
+        ],
+        root=root,
+    )
+    output = capsys.readouterr()
+
+    assert exit_code == 1
+    assert json.loads(output.out) == {
+        "error": "unknown validator_id 'tools/unknown.py'",
+        "executed": False,
+        "project_id": "repo-1",
+        "validator_id": "tools/unknown.py",
+    }
+
+
+def test_ora_execute_validator_fails_closed_on_malformed_validator_output(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    root = make_validator_root(tmp_path, profile_id="CSL_GOVERNED")
+    write_text(
+        root / "tools/validate_profiles.py",
+        "#!/usr/bin/env python3\n"
+        "print('not-json')\n",
+    )
+
+    exit_code = execute_main(
+        [
+            "--project-id",
+            "repo-1",
+            "--validator-id",
+            "tools/validate_profiles.py",
+        ],
+        root=root,
+    )
+    output = capsys.readouterr()
+    document = json.loads(output.out)
+
+    assert exit_code == 1
+    assert document["result_status"] == "ERROR"
+    assert document["failure_reason"] == (
+        "malformed result output for 'tools/validate_profiles.py': invalid JSON"
+    )
+    assert document["validator_output"] is None
+
+
+def test_ora_execute_validator_fails_closed_on_missing_validator_command(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    root = make_validator_root(tmp_path, profile_id="CSL_GOVERNED")
+    (root / "tools/validate_profiles.py").unlink()
+
+    exit_code = execute_main(
+        [
+            "--project-id",
+            "repo-1",
+            "--validator-id",
+            "tools/validate_profiles.py",
+        ],
+        root=root,
+    )
+    output = capsys.readouterr()
+
+    assert exit_code == 1
+    assert json.loads(output.out) == {
+        "error": "missing validator command for 'tools/validate_profiles.py': tools/validate_profiles.py",
+        "executed": False,
+        "project_id": "repo-1",
+        "validator_id": "tools/validate_profiles.py",
+    }
+
+
+def test_ora_execute_validator_fails_closed_on_non_zero_exit_code(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    root = make_validator_root(tmp_path, profile_id="CSL_GOVERNED")
+    write_text(
+        root / "tools/validate_profiles.py",
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "print('{\"validator_id\":\"tools/validate_profiles.py\",\"ok\":false,\"summary\":\"failed\",\"errors\":[\"boom\"]}')\n"
+        "raise SystemExit(3)\n",
+    )
+
+    exit_code = execute_main(
+        [
+            "--project-id",
+            "repo-1",
+            "--validator-id",
+            "tools/validate_profiles.py",
+        ],
+        root=root,
+    )
+    output = capsys.readouterr()
+    document = json.loads(output.out)
+
+    assert exit_code == 1
+    assert document["result_status"] == "FAIL"
+    assert document["exit_code"] == 3
+    assert document["failure_reason"] == "validator exited with code 3"
+
+
 def make_validator_root(
     tmp_path: Path,
     *,
@@ -149,6 +331,10 @@ def make_validator_root(
     (root / "queue").mkdir()
     (root / "profiles").mkdir()
     (root / "schemas/profile").mkdir(parents=True)
+    (root / "schemas/validation").mkdir(parents=True)
+    (root / "src/ora/validation").mkdir(parents=True, exist_ok=True)
+    (root / "governance/workflows/validation_reports").mkdir(parents=True)
+    (root / "tools").mkdir(exist_ok=True)
 
     write_text(
         root / "registry/projects.yaml",
@@ -163,13 +349,28 @@ def make_validator_root(
         repos_yaml
         or build_repos_yaml(profile_id),
     )
-    write_text(
-        root / "profiles" / f"{profile_id}.yaml",
-        (ROOT / "profiles" / f"{profile_id}.yaml").read_text(encoding="utf-8"),
-    )
+    for source_profile in [
+        "CSL_GOVERNED",
+        "STANDALONE_LIGHT",
+        "STANDALONE_COMMERCIAL",
+        "RESEARCH_LIBRARY",
+        "SANDBOX",
+    ]:
+        write_text(
+            root / "profiles" / f"{source_profile}.yaml",
+            (ROOT / "profiles" / f"{source_profile}.yaml").read_text(
+                encoding="utf-8"
+            ),
+        )
     write_text(
         root / "schemas/profile/project_profile.schema.json",
         (ROOT / "schemas/profile/project_profile.schema.json").read_text(
+            encoding="utf-8"
+        ),
+    )
+    write_text(
+        root / "schemas/validation/validator_result.schema.json",
+        (ROOT / "schemas/validation/validator_result.schema.json").read_text(
             encoding="utf-8"
         ),
     )
@@ -178,6 +379,7 @@ def make_validator_root(
         queue_yaml
         or build_queue_yaml(profile_id),
     )
+    copy_validator_runtime(root)
     return root
 
 
@@ -232,3 +434,20 @@ def validator_lines(profile_id: str) -> str:
 def write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def copy_validator_runtime(root: Path) -> None:
+    for relative_path in [
+        "src/ora/__init__.py",
+        "src/ora/validation/__init__.py",
+        "src/ora/validation/schema_subset.py",
+        "src/ora/validation/result_capture.py",
+        "src/ora/validation/validator_orchestrator.py",
+        "src/ora/pge/bootstrap_plan.py",
+        "tools/validate_repo_layout.py",
+        "tools/validate_profiles.py",
+    ]:
+        write_text(
+            root / relative_path,
+            (ROOT / relative_path).read_text(encoding="utf-8"),
+        )

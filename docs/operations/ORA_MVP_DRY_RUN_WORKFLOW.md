@@ -8,7 +8,7 @@ The workflow ends at:
 - governed handoff packet generation
 - validator orchestration plan generation
 
-The workflow does not include validator execution, GitHub operations, queue state progression, or bridge dispatch.
+Default workflow execution still does not include validator execution, GitHub operations, queue state progression, or bridge dispatch. Validator execution is available only through the explicit single-validator entrypoint documented below.
 
 ## Current MVP Boundary
 
@@ -20,11 +20,12 @@ Current ORA MVP capabilities are limited to:
 - registry admission from a successful execution artifact
 - queue admission for a known project and repo
 - governed handoff packet generation
-- validator execution plan generation only
+- validator execution plan generation by default
+- explicit allowlisted single-validator execution with deterministic result artifact capture
 
 Current ORA MVP does not provide:
 - GitHub repository creation or GitHub bridge execution
-- validator execution
+- general validator execution orchestration
 - queue state engine progression beyond initial admission
 - bridge prompt dispatch
 - unrestricted shell execution
@@ -272,7 +273,7 @@ Required artifact:
 Expected artifact purpose:
 - reviewable plan-only validator artifact
 - lists validators chosen from the admitted profile
-- proves that validator execution is still disallowed in this MVP
+- proves that the default orchestration path remains plan-only in this MVP
 
 Fail-closed checkpoint:
 - project must already exist in `registry/projects.yaml`
@@ -281,6 +282,25 @@ Fail-closed checkpoint:
 - queue `profile_id` must match repo `project_profile`
 - repo `validator_set` must match the deterministic profile validator selection
 - the returned plan must keep `execution_mode: PLAN_ONLY`
+
+### 8.1 Explicit single-validator execution
+
+Command:
+
+```bash
+python3 tools/ora_execute_validator.py --project-id ora-mvp-example --validator-id tools/validate_repo_layout.py > /tmp/ora-mvp-validator-result.json
+```
+
+Purpose:
+- runs one explicitly declared validator from the admitted allowlist
+- writes a deterministic result artifact to `governance/workflows/validation_reports/`
+
+Fail-closed checkpoint:
+- unknown validator ids are rejected
+- undeclared validator execution requests are rejected
+- missing validator commands are rejected
+- non-zero validator exit codes return failure artifacts and stop continuation
+- malformed validator result output returns error artifacts and stop continuation
 
 ## Artifact Summary
 
@@ -293,6 +313,7 @@ Artifacts produced by the documented flow:
 - queue admission result JSON: result of initial queue item creation
 - handoff packet JSON: governed bridge handoff artifact for review only
 - validator plan JSON: plan-only validator orchestration artifact
+- validator result JSON: explicit single-validator execution artifact
 
 Tracked repository state updated by the flow:
 - `registry/repos.yaml`
@@ -313,13 +334,14 @@ Do not continue past a step if any of the following occur:
 - duplicate registry or queue identifiers are detected
 - handoff packet generation fails
 - validator plan generation fails
+- explicit validator execution fails
 
 Each failure is a stop condition. The next step must not be run until the failing artifact or repository state is corrected.
 
 ## Explicit Prohibited Actions
 
 The current MVP workflow must not be used to:
-- run validators from the generated validator plan
+- run validators from the generated validator plan or through any undeclared execution surface
 - create, mutate, or synchronize GitHub repositories
 - dispatch bridge prompts to ChatGPT, Claude, Codex, or any other bridge target
 - perform queue progression beyond initial queue admission

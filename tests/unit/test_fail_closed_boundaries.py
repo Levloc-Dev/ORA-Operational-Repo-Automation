@@ -277,7 +277,7 @@ def test_validate_fail_closed_boundaries_rejects_validator_execution_patterns(
         "\n"
         "def build_validator_plan() -> None:\n"
         "    os.system('echo nope')\n"
-        "    subprocess.run(['echo', 'nope'])\n"
+        "    subprocess.run('echo nope', shell=True)\n"
         "    subprocess.Popen(['echo', 'nope'])\n"
         "    subprocess.check_call(['echo', 'nope'])\n"
         "    subprocess.check_output(['echo', 'nope'])\n"
@@ -313,9 +313,12 @@ def test_validate_fail_closed_boundaries_rejects_validator_execution_patterns(
     )
 
     assert not result.ok
-    assert any("must not import subprocess" in error for error in result.errors)
     assert any("must not import network modules" in error for error in result.errors)
     assert any("must not call os.system" in error for error in result.errors)
+    assert any(
+        "must not pass string commands to subprocess.run" in error
+        for error in result.errors
+    )
     assert any("must not call Popen" in error for error in result.errors)
     assert any("must not call check_call" in error for error in result.errors)
     assert any("must not call check_output" in error for error in result.errors)
@@ -357,19 +360,40 @@ def write_safe_bridge_scope_files(root: Path) -> None:
 
 
 def write_safe_validator_orchestration_files(root: Path) -> None:
-    orchestration_text = (
-        "from pathlib import Path\n"
-        "\n"
-        "ROOT = Path('.')\n"
-        "\n"
-        "def build_validator_plan() -> dict[str, object]:\n"
-        "    return {\n"
-        "        'execution_mode': 'PLAN_ONLY',\n"
-        "        'validator_execution_allowed': False,\n"
-        "    }\n"
-    )
+    file_text = {
+        "src/ora/validation/validator_orchestrator.py": (
+            "from pathlib import Path\n"
+            "\n"
+            "ROOT = Path('.')\n"
+            "\n"
+            "def build_validator_plan() -> dict[str, object]:\n"
+            "    return {\n"
+            "        'execution_mode': 'PLAN_ONLY',\n"
+            "        'validator_execution_allowed': False,\n"
+            "    }\n"
+        ),
+        "src/ora/validation/result_capture.py": (
+            "import subprocess\n"
+            "from pathlib import Path\n"
+            "\n"
+            "REPORT_PATH = Path('governance/workflows/validation_reports/result.json')\n"
+            "\n"
+            "def capture() -> int:\n"
+            "    subprocess.run(['python3', 'tools/validate_repo_layout.py'], shell=False)\n"
+            "    REPORT_PATH.write_text('{}\\n', encoding='utf-8')\n"
+            "    return 0\n"
+        ),
+        "tools/ora_run_validators.py": (
+            "def main() -> int:\n"
+            "    return 0\n"
+        ),
+        "tools/ora_execute_validator.py": (
+            "def main() -> int:\n"
+            "    return 0\n"
+        ),
+    }
     for relative_path in VALIDATOR_ORCHESTRATION_FILES:
-        write_text(root / relative_path, orchestration_text)
+        write_text(root / relative_path, file_text[relative_path])
 
 
 def write_text(path: Path, text: str) -> None:

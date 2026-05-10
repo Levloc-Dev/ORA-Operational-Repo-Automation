@@ -153,7 +153,10 @@ def build_validator_plan(project_id: str, *, root: Path = ROOT) -> dict[str, Any
     _require_known_project(projects_document["projects"], project_id)
     queue_item = _require_queued_project(queue_document["queue_items"], project_id)
     repo_entry = _require_repo_entry(repos_document["repos"], queue_item["repo_id"])
-    validators, prohibited_actions = _resolve_profile_rules(queue_item["profile_id"])
+    validators, prohibited_actions = _resolve_profile_rules(
+        queue_item["profile_id"],
+        root=root,
+    )
     _validate_joined_state(queue_item, repo_entry, validators)
 
     return {
@@ -234,9 +237,13 @@ def _require_repo_entry(
     )
 
 
-def _resolve_profile_rules(profile_id: str) -> tuple[list[str], list[str]]:
+def _resolve_profile_rules(
+    profile_id: str,
+    *,
+    root: Path = ROOT,
+) -> tuple[list[str], list[str]]:
     try:
-        profile = load_project_profile(profile_id, root=ROOT)
+        profile = load_project_profile(profile_id, root=root)
     except BootstrapPlanError as exc:
         raise ValidatorOrchestratorError(str(exc)) from exc
 

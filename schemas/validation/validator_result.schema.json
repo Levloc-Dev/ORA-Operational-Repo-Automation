@@ -5,6 +5,11 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
+    "artifact_version",
+    "project_id",
+    "repo_id",
+    "profile_id",
+    "validator_id",
     "command",
     "exit_code",
     "stdout_hash",
@@ -12,9 +17,16 @@
     "duration_ms",
     "working_directory",
     "timestamp",
-    "result_status"
+    "result_status",
+    "failure_reason",
+    "validator_output"
   ],
   "properties": {
+    "artifact_version": { "type": "string" },
+    "project_id": { "type": "string" },
+    "repo_id": { "type": "string" },
+    "profile_id": { "type": "string" },
+    "validator_id": { "type": "string" },
     "command": { "type": "string" },
     "exit_code": { "type": "integer" },
     "stdout_hash": { "type": "string" },
@@ -22,6 +34,21 @@
     "duration_ms": { "type": "integer", "minimum": 0 },
     "working_directory": { "type": "string" },
     "timestamp": { "type": ["string", "null"] },
-    "result_status": { "type": "string", "enum": ["PASS", "FAIL", "ERROR"] }
+    "result_status": { "type": "string", "enum": ["PASS", "FAIL", "ERROR"] },
+    "failure_reason": { "type": ["string", "null"] },
+    "validator_output": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["validator_id", "ok", "summary", "errors"],
+      "properties": {
+        "validator_id": { "type": "string" },
+        "ok": { "type": "boolean" },
+        "summary": { "type": "string" },
+        "errors": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
   }
 }

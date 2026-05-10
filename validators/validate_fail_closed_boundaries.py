@@ -30,7 +30,9 @@ BRIDGE_SCOPE_FILES = [
 ]
 VALIDATOR_ORCHESTRATION_FILES = [
     "src/ora/validation/validator_orchestrator.py",
+    "src/ora/validation/result_capture.py",
     "tools/ora_run_validators.py",
+    "tools/ora_execute_validator.py",
 ]
 FORBIDDEN_SUBSTRINGS = {
     "update_queue_item_state": "queue admission must not call state transition helpers",
@@ -83,7 +85,6 @@ FORBIDDEN_VALIDATOR_IMPORTS = {
     "httpx": "validator orchestration scope must not import network modules",
     "requests": "validator orchestration scope must not import network modules",
     "socket": "validator orchestration scope must not import network modules",
-    "subprocess": "validator orchestration scope must not import subprocess",
     "urllib": "validator orchestration scope must not import network modules",
 }
 FORBIDDEN_VALIDATOR_CALL_PREFIXES = {
@@ -103,6 +104,7 @@ FORBIDDEN_VALIDATOR_CALL_NAMES = {
     "check_output": "validator orchestration scope must not call check_output",
     "run": "validator orchestration scope must not call run",
 }
+ALLOWED_VALIDATOR_WRITE_PATH_PREFIX = "governance/workflows/validation_reports/"
 
 
 class ValidationResult(NamedTuple):
@@ -387,6 +389,9 @@ class ValidatorOrchestrationVisitor(ast.NodeVisitor):
         if qualified_name is None:
             return None
 
+        if qualified_name == "subprocess.run":
+            return _validate_bounded_subprocess_run(node)
+
         terminal_name = qualified_name.rsplit(".", 1)[-1]
         if terminal_name in FORBIDDEN_VALIDATOR_CALL_NAMES:
             return FORBIDDEN_VALIDATOR_CALL_NAMES[terminal_name]
@@ -517,6 +522,8 @@ def _resolve_path_expression(
             and len(node.args) == 1
         ):
             return _resolve_path_expression(node.args[0], bindings)
+        if isinstance(node.func, ast.Name) and node.func.id == "build_result_artifact_path":
+            return f"{ALLOWED_VALIDATOR_WRITE_PATH_PREFIX}generated"
 
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
         left = _resolve_path_expression(node.left, bindings)
@@ -588,11 +595,15 @@ def _format_bridge_write_error(path_text: str | None) -> str:
     return f"bridge scope must not perform file writes ({path_text})"
 
 
-def _format_validator_write_error(path_text: str | None) -> str:
+def _format_validator_write_error(path_text: str | None) -> str | None:
     if path_text is None:
         return "validator orchestration scope must not perform file writes"
 
     normalized = path_text.replace("\\", "/")
+    if normalized.endswith(ALLOWED_VALIDATOR_WRITE_PATH_PREFIX.rstrip("/")) or (
+        ALLOWED_VALIDATOR_WRITE_PATH_PREFIX in normalized
+    ):
+        return None
     if normalized.endswith("queue/project_queue.yaml"):
         return "validator orchestration scope must not write queue/project_queue.yaml"
     if normalized.endswith("registry/projects.yaml"):
@@ -600,6 +611,25 @@ def _format_validator_write_error(path_text: str | None) -> str:
     if normalized.endswith("registry/repos.yaml"):
         return "validator orchestration scope must not write registry/repos.yaml"
     return f"validator orchestration scope must not perform repo writes ({path_text})"
+
+
+def _validate_bounded_subprocess_run(node: ast.Call) -> str | None:
+    if not node.args:
+        return "validator orchestration scope must not call subprocess.run without argv"
+
+    command_arg = node.args[0]
+    if isinstance(command_arg, ast.Constant) and isinstance(command_arg.value, str):
+        return "validator orchestration scope must not pass string commands to subprocess.run"
+    if not isinstance(command_arg, (ast.List, ast.Tuple, ast.Name, ast.Call)):
+        return "validator orchestration scope must not call subprocess.run with dynamic argv"
+
+    for keyword in node.keywords:
+        if keyword.arg == "shell":
+            if not (
+                isinstance(keyword.value, ast.Constant) and keyword.value.value is False
+            ):
+                return "validator orchestration scope must not enable shell execution"
+    return None
 
 
 def main() -> int:

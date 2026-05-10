@@ -7,7 +7,7 @@ The current repository state is a narrow governed MVP with these implemented sli
 - explicit local scaffold writing with required confirmation
 - repo registry admission
 - queue admission
-- validator plan generation only
+- validator plan generation by default, plus explicit allowlisted single-validator execution
 - governed handoff packet generation
 - deterministic validation entrypoints and supporting schemas
 

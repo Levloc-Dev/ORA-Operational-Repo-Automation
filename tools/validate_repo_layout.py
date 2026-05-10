@@ -3,11 +3,20 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
+SRC_ROOT = ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+from ora.validation.result_capture import (  # noqa: E402
+    build_validator_output,
+    render_output,
+)
 
 REQUIRED_PATHS = [
     "README.md",
@@ -87,6 +96,7 @@ REQUIRED_PATHS = [
     "tools/ora_bootstrap_project.py",
     "tools/ora_register_repo.py",
     "tools/ora_run_validators.py",
+    "tools/ora_execute_validator.py",
     "tools/ora_update_queue.py",
     "tools/ora_generate_handoff_packet.py",
     "tools/validate_profiles.py",
@@ -115,23 +125,63 @@ FORBIDDEN_PATHS = [
 ]
 
 
-def main() -> int:
+def validate_repo_layout() -> tuple[bool, list[str]]:
     missing = [path for path in REQUIRED_PATHS if not (ROOT / path).exists()]
     forbidden = [path for path in FORBIDDEN_PATHS if (ROOT / path).exists()]
+    errors: list[str] = []
 
-    if missing or forbidden:
-        if missing:
-            print("missing required paths:", file=sys.stderr)
-            for path in missing:
-                print(f"  - {path}", file=sys.stderr)
-        if forbidden:
-            print("forbidden baseline paths present:", file=sys.stderr)
-            for path in forbidden:
-                print(f"  - {path}", file=sys.stderr)
-        return 1
+    if missing:
+        errors.extend(f"missing required path: {path}" for path in missing)
+    if forbidden:
+        errors.extend(f"forbidden baseline path present: {path}" for path in forbidden)
+    return (not errors, errors)
 
-    print("repository layout validation passed")
-    return 0
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Fail-closed repository layout validator for the ORA scaffold."
+    )
+    parser.add_argument(
+        "--format",
+        choices=["json", "yaml", "text"],
+        default="text",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    ok, errors = validate_repo_layout()
+
+    if args.format == "text":
+        if not ok:
+            missing = [error.removeprefix("missing required path: ") for error in errors if error.startswith("missing required path: ")]
+            forbidden = [error.removeprefix("forbidden baseline path present: ") for error in errors if error.startswith("forbidden baseline path present: ")]
+            if missing:
+                print("missing required paths:", file=sys.stderr)
+                for path in missing:
+                    print(f"  - {path}", file=sys.stderr)
+            if forbidden:
+                print("forbidden baseline paths present:", file=sys.stderr)
+                for path in forbidden:
+                    print(f"  - {path}", file=sys.stderr)
+            return 1
+
+        print("repository layout validation passed")
+        return 0
+
+    document = build_validator_output(
+        "tools/validate_repo_layout.py",
+        ok=ok,
+        summary=(
+            "repository layout validation passed"
+            if ok
+            else f"repository layout validation failed with {len(errors)} issue(s)"
+        ),
+        errors=errors,
+    )
+    print(render_output(document, args.format), end="")
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

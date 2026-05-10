@@ -14,6 +14,7 @@ SUPPORTED_SCHEMA_KEYS = {
     "title",
     "description",
     "type",
+    "minimum",
     "additionalProperties",
     "required",
     "properties",
@@ -101,7 +102,7 @@ def _validate_schema_support(schema: Any, schema_path: str, errors: list[str]) -
             errors.append(f"{schema_path}.type: expected string or non-empty list")
             allowed_types = []
 
-        valid_types = {"object", "array", "string", "boolean", "null"}
+        valid_types = {"object", "array", "string", "boolean", "null", "integer", "number"}
         invalid_types = [entry for entry in allowed_types if entry not in valid_types]
         if invalid_types:
             errors.append(
@@ -116,6 +117,9 @@ def _validate_schema_support(schema: Any, schema_path: str, errors: list[str]) -
 
     if "enum" in schema and not isinstance(schema["enum"], list):
         errors.append(f"{schema_path}.enum: expected list")
+
+    if "minimum" in schema and not isinstance(schema["minimum"], (int, float)):
+        errors.append(f"{schema_path}.minimum: expected number")
 
     if "properties" in schema:
         properties = schema["properties"]
@@ -153,6 +157,11 @@ def _validate_instance(
         errors.append(f"{instance_path}: expected one of {allowed}")
         return
 
+    if "minimum" in schema and isinstance(instance, (int, float)):
+        if instance < schema["minimum"]:
+            errors.append(f"{instance_path}: expected >= {schema['minimum']}")
+            return
+
     schema_type = schema.get("type")
     if isinstance(schema_type, list):
         if "object" in schema_type and isinstance(instance, dict):
@@ -163,6 +172,10 @@ def _validate_instance(
             schema_type = "string"
         elif "boolean" in schema_type and isinstance(instance, bool):
             schema_type = "boolean"
+        elif "integer" in schema_type and isinstance(instance, int) and not isinstance(instance, bool):
+            schema_type = "integer"
+        elif "number" in schema_type and isinstance(instance, (int, float)) and not isinstance(instance, bool):
+            schema_type = "number"
         elif instance is None and "null" in schema_type:
             schema_type = "null"
         else:
@@ -208,6 +221,10 @@ def _matches_type(instance: Any, expected_type: str | list[str]) -> bool:
         return isinstance(instance, str)
     if expected_type == "boolean":
         return isinstance(instance, bool)
+    if expected_type == "integer":
+        return isinstance(instance, int) and not isinstance(instance, bool)
+    if expected_type == "number":
+        return isinstance(instance, (int, float)) and not isinstance(instance, bool)
     if expected_type == "null":
         return instance is None
     return False
