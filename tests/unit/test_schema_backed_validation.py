@@ -473,11 +473,70 @@ def test_validate_handoff_packets_validates_artifacts(tmp_path: Path) -> None:
         {
             "type": "object",
             "additionalProperties": False,
-            "required": ["bridge_type", "packet_version", "payload", "execution_mode"],
+            "required": [
+                "packet_version",
+                "bridge_type",
+                "project_id",
+                "repo_id",
+                "profile_id",
+                "current_queue_status",
+                "requested_action",
+                "authority_boundary",
+                "validation_commands",
+                "prohibited_actions",
+                "execution_mode",
+            ],
             "properties": {
-                "bridge_type": {"type": "string"},
                 "packet_version": {"type": "string"},
-                "payload": {"type": "object"},
+                "bridge_type": {
+                    "type": "string",
+                    "enum": ["CHATGPT", "CLAUDE", "CODEX"],
+                },
+                "project_id": {"type": "string"},
+                "repo_id": {"type": "string"},
+                "profile_id": {"type": "string"},
+                "current_queue_status": {"type": "string"},
+                "requested_action": {"type": "string"},
+                "authority_boundary": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": [
+                        "execution_mode",
+                        "allowed_state_reads",
+                        "human_review_required",
+                        "git_operations_allowed",
+                        "network_access_allowed",
+                        "prompt_dispatch_allowed",
+                        "queue_updates_allowed",
+                        "repo_writes_allowed",
+                        "subprocess_allowed",
+                    ],
+                    "properties": {
+                        "execution_mode": {
+                            "type": "string",
+                            "enum": ["packet_only"],
+                        },
+                        "allowed_state_reads": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "human_review_required": {"type": "boolean"},
+                        "git_operations_allowed": {"type": "boolean"},
+                        "network_access_allowed": {"type": "boolean"},
+                        "prompt_dispatch_allowed": {"type": "boolean"},
+                        "queue_updates_allowed": {"type": "boolean"},
+                        "repo_writes_allowed": {"type": "boolean"},
+                        "subprocess_allowed": {"type": "boolean"},
+                    },
+                },
+                "validation_commands": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "prohibited_actions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
                 "execution_mode": {
                     "type": "string",
                     "enum": ["packet_only"],
@@ -490,18 +549,62 @@ def test_validate_handoff_packets_validates_artifacts(tmp_path: Path) -> None:
     _write_json(
         valid_path,
         {
-            "bridge_type": "codex",
             "packet_version": "1.0.0",
-            "payload": {},
+            "bridge_type": "CODEX",
+            "project_id": "repo-1",
+            "repo_id": "repo-1",
+            "profile_id": "CSL_GOVERNED",
+            "current_queue_status": "READY_FOR_FIRST_GOVERNED_SLICE",
+            "requested_action": "PREPARE_GOVERNED_CODEX_HANDOFF",
+            "authority_boundary": {
+                "execution_mode": "packet_only",
+                "allowed_state_reads": [
+                    "registry/projects.yaml",
+                    "registry/repos.yaml",
+                    "queue/project_queue.yaml",
+                ],
+                "human_review_required": True,
+                "git_operations_allowed": False,
+                "network_access_allowed": False,
+                "prompt_dispatch_allowed": False,
+                "queue_updates_allowed": False,
+                "repo_writes_allowed": False,
+                "subprocess_allowed": False,
+            },
+            "validation_commands": ["pytest -q"],
+            "prohibited_actions": ["execution"],
+            "packet_version": "1.0.0",
             "execution_mode": "packet_only",
         },
     )
     _write_json(
         invalid_path,
         {
-            "bridge_type": "codex",
             "packet_version": "1.0.0",
-            "payload": {},
+            "bridge_type": "CODEX",
+            "project_id": "repo-1",
+            "repo_id": "repo-1",
+            "profile_id": "CSL_GOVERNED",
+            "current_queue_status": "READY_FOR_FIRST_GOVERNED_SLICE",
+            "requested_action": "PREPARE_GOVERNED_CODEX_HANDOFF",
+            "authority_boundary": {
+                "execution_mode": "execute_now",
+                "allowed_state_reads": [
+                    "registry/projects.yaml",
+                    "registry/repos.yaml",
+                    "queue/project_queue.yaml",
+                ],
+                "human_review_required": True,
+                "git_operations_allowed": False,
+                "network_access_allowed": False,
+                "prompt_dispatch_allowed": False,
+                "queue_updates_allowed": False,
+                "repo_writes_allowed": False,
+                "subprocess_allowed": False,
+            },
+            "validation_commands": ["pytest -q"],
+            "prohibited_actions": ["execution"],
+            "packet_version": "1.0.0",
             "execution_mode": "execute_now",
         },
     )
@@ -512,7 +615,9 @@ def test_validate_handoff_packets_validates_artifacts(tmp_path: Path) -> None:
     assert valid_result.ok
     assert not invalid_result.ok
     assert (
-        f"{invalid_path}.execution_mode: expected one of 'packet_only'"
+        f"{invalid_path}.authority_boundary.execution_mode: expected one of 'packet_only'"
+        in invalid_result.errors
+        or f"{invalid_path}.execution_mode: expected one of 'packet_only'"
         in invalid_result.errors
     )
 

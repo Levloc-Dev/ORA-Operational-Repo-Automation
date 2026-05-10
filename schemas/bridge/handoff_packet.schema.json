@@ -4,11 +4,55 @@
   "title": "ORA Handoff Packet",
   "type": "object",
   "additionalProperties": false,
-  "required": ["bridge_type", "packet_version", "payload", "execution_mode"],
+  "required": [
+    "packet_version",
+    "bridge_type",
+    "project_id",
+    "repo_id",
+    "profile_id",
+    "current_queue_status",
+    "requested_action",
+    "authority_boundary",
+    "validation_commands",
+    "prohibited_actions",
+    "execution_mode"
+  ],
   "properties": {
-    "bridge_type": { "type": "string" },
     "packet_version": { "type": "string" },
-    "payload": { "type": "object" },
+    "bridge_type": { "type": "string", "enum": ["CHATGPT", "CLAUDE", "CODEX"] },
+    "project_id": { "type": "string" },
+    "repo_id": { "type": "string" },
+    "profile_id": { "type": "string" },
+    "current_queue_status": { "type": "string" },
+    "requested_action": { "type": "string" },
+    "authority_boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "execution_mode",
+        "allowed_state_reads",
+        "human_review_required",
+        "git_operations_allowed",
+        "network_access_allowed",
+        "prompt_dispatch_allowed",
+        "queue_updates_allowed",
+        "repo_writes_allowed",
+        "subprocess_allowed"
+      ],
+      "properties": {
+        "execution_mode": { "type": "string", "enum": ["packet_only"] },
+        "allowed_state_reads": { "type": "array", "items": { "type": "string" } },
+        "human_review_required": { "type": "boolean" },
+        "git_operations_allowed": { "type": "boolean" },
+        "network_access_allowed": { "type": "boolean" },
+        "prompt_dispatch_allowed": { "type": "boolean" },
+        "queue_updates_allowed": { "type": "boolean" },
+        "repo_writes_allowed": { "type": "boolean" },
+        "subprocess_allowed": { "type": "boolean" }
+      }
+    },
+    "validation_commands": { "type": "array", "items": { "type": "string" } },
+    "prohibited_actions": { "type": "array", "items": { "type": "string" } },
     "execution_mode": { "type": "string", "enum": ["packet_only"] }
   }
 }
