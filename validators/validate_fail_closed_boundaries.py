@@ -28,6 +28,10 @@ BRIDGE_SCOPE_FILES = [
     "src/ora/bridges/claude.py",
     "tools/ora_generate_handoff_packet.py",
 ]
+VALIDATOR_ORCHESTRATION_FILES = [
+    "src/ora/validation/validator_orchestrator.py",
+    "tools/ora_run_validators.py",
+]
 FORBIDDEN_SUBSTRINGS = {
     "update_queue_item_state": "queue admission must not call state transition helpers",
     "update-state": "queue admission must not expose an update-state CLI command",
@@ -68,6 +72,36 @@ FORBIDDEN_BRIDGE_CALL_PREFIXES = {
     "socket": "bridge scope must not perform socket calls",
     "subprocess": "bridge scope must not perform subprocess calls",
     "urllib": "bridge scope must not perform urllib calls",
+}
+FORBIDDEN_VALIDATOR_COMMAND_MARKERS = {
+    "git ": "validator orchestration scope must not include git command markers",
+    "git\n": "validator orchestration scope must not include git command markers",
+}
+FORBIDDEN_VALIDATOR_IMPORTS = {
+    "aiohttp": "validator orchestration scope must not import network modules",
+    "http": "validator orchestration scope must not import network modules",
+    "httpx": "validator orchestration scope must not import network modules",
+    "requests": "validator orchestration scope must not import network modules",
+    "socket": "validator orchestration scope must not import network modules",
+    "subprocess": "validator orchestration scope must not import subprocess",
+    "urllib": "validator orchestration scope must not import network modules",
+}
+FORBIDDEN_VALIDATOR_CALL_PREFIXES = {
+    "eval": "validator orchestration scope must not call eval",
+    "exec": "validator orchestration scope must not call exec",
+    "http.client": "validator orchestration scope must not perform network calls",
+    "httpx": "validator orchestration scope must not perform network calls",
+    "os.system": "validator orchestration scope must not call os.system",
+    "requests": "validator orchestration scope must not perform network calls",
+    "socket": "validator orchestration scope must not perform network calls",
+    "subprocess": "validator orchestration scope must not perform subprocess calls",
+    "urllib": "validator orchestration scope must not perform network calls",
+}
+FORBIDDEN_VALIDATOR_CALL_NAMES = {
+    "Popen": "validator orchestration scope must not call Popen",
+    "check_call": "validator orchestration scope must not call check_call",
+    "check_output": "validator orchestration scope must not call check_output",
+    "run": "validator orchestration scope must not call run",
 }
 
 
@@ -259,11 +293,116 @@ class BridgeScopeVisitor(ast.NodeVisitor):
         return None
 
 
+class ValidatorOrchestrationVisitor(ast.NodeVisitor):
+    """Collect static validator-orchestration scope violations."""
+
+    def __init__(self) -> None:
+        self.path_bindings: dict[str, str] = {}
+        self.import_aliases: dict[str, str] = {}
+        self.errors: list[str] = []
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        resolved = _resolve_path_expression(node.value, self.path_bindings)
+        if resolved is not None:
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self.path_bindings[target.id] = resolved
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if node.value is not None and isinstance(node.target, ast.Name):
+            resolved = _resolve_path_expression(node.value, self.path_bindings)
+            if resolved is not None:
+                self.path_bindings[node.target.id] = resolved
+        self.generic_visit(node)
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            canonical = alias.name
+            bound_name = alias.asname or canonical.split(".", 1)[0]
+            self.import_aliases[bound_name] = canonical
+            self._record_forbidden_import(canonical, node.lineno)
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        if node.module is None:
+            self.generic_visit(node)
+            return
+
+        self._record_forbidden_import(node.module, node.lineno)
+        for alias in node.names:
+            bound_name = alias.asname or alias.name
+            self.import_aliases[bound_name] = f"{node.module}.{alias.name}"
+        self.generic_visit(node)
+
+    def visit_Constant(self, node: ast.Constant) -> None:
+        if isinstance(node.value, str):
+            self._record_command_markers(node.value, node.lineno)
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        forbidden_write_error = self._resolve_forbidden_write(node)
+        if forbidden_write_error is not None:
+            self.errors.append(f"line {node.lineno}: {forbidden_write_error}")
+
+        forbidden_call_error = self._resolve_forbidden_call(node)
+        if forbidden_call_error is not None:
+            self.errors.append(f"line {node.lineno}: {forbidden_call_error}")
+
+        self.generic_visit(node)
+
+    def _record_forbidden_import(self, module_name: str, lineno: int) -> None:
+        for forbidden_module, message in FORBIDDEN_VALIDATOR_IMPORTS.items():
+            if module_name == forbidden_module or module_name.startswith(
+                f"{forbidden_module}."
+            ):
+                self.errors.append(f"line {lineno}: {message}")
+
+    def _record_command_markers(self, value: str, lineno: int) -> None:
+        normalized_value = value.lower()
+        for marker, message in FORBIDDEN_VALIDATOR_COMMAND_MARKERS.items():
+            if marker in normalized_value:
+                self.errors.append(f"line {lineno}: {message} ({marker.strip()})")
+
+    def _resolve_forbidden_write(self, node: ast.Call) -> str | None:
+        if isinstance(node.func, ast.Attribute) and node.func.attr in {
+            "write",
+            "write_bytes",
+            "write_text",
+        }:
+            path_text = _resolve_path_expression(node.func.value, self.path_bindings)
+            return _format_validator_write_error(path_text)
+
+        if isinstance(node.func, ast.Name) and node.func.id == "open" and node.args:
+            mode = _resolve_open_mode(node)
+            if mode is None or not _mode_writes(mode):
+                return None
+            path_text = _resolve_path_expression(node.args[0], self.path_bindings)
+            return _format_validator_write_error(path_text)
+
+        return None
+
+    def _resolve_forbidden_call(self, node: ast.Call) -> str | None:
+        qualified_name = _resolve_qualified_name(node.func, self.import_aliases)
+        if qualified_name is None:
+            return None
+
+        terminal_name = qualified_name.rsplit(".", 1)[-1]
+        if terminal_name in FORBIDDEN_VALIDATOR_CALL_NAMES:
+            return FORBIDDEN_VALIDATOR_CALL_NAMES[terminal_name]
+
+        for prefix, message in FORBIDDEN_VALIDATOR_CALL_PREFIXES.items():
+            if qualified_name == prefix or qualified_name.startswith(f"{prefix}."):
+                return message
+        return None
+
+
 def validate_fail_closed_boundaries(
     root: Path = ROOT,
     *,
     queue_admission_files: list[str] | None = None,
     bridge_scope_files: list[str] | None = None,
+    validator_orchestration_files: list[str] | None = None,
 ) -> ValidationResult:
     errors: list[str] = []
 
@@ -301,6 +440,18 @@ def validate_fail_closed_boundaries(
             continue
         errors.extend(_validate_bridge_scope_file(path, relative_path))
 
+    resolved_validator_orchestration_files = (
+        VALIDATOR_ORCHESTRATION_FILES
+        if validator_orchestration_files is None
+        else validator_orchestration_files
+    )
+    for relative_path in resolved_validator_orchestration_files:
+        path = root / relative_path
+        if not path.exists():
+            errors.append(f"missing validator orchestration file: {relative_path}")
+            continue
+        errors.extend(_validate_validator_orchestration_file(path, relative_path))
+
     return ValidationResult(ok=not errors, errors=errors)
 
 
@@ -332,6 +483,19 @@ def _validate_bridge_scope_file(path: Path, relative_path: str) -> list[str]:
         return [f"{relative_path}: syntax error during static scan: {exc.msg}"]
 
     visitor = BridgeScopeVisitor()
+    visitor.visit(tree)
+    return [f"{relative_path}: {error}" for error in visitor.errors]
+
+
+def _validate_validator_orchestration_file(path: Path, relative_path: str) -> list[str]:
+    text = path.read_text(encoding="utf-8")
+
+    try:
+        tree = ast.parse(text, filename=relative_path)
+    except SyntaxError as exc:
+        return [f"{relative_path}: syntax error during static scan: {exc.msg}"]
+
+    visitor = ValidatorOrchestrationVisitor()
     visitor.visit(tree)
     return [f"{relative_path}: {error}" for error in visitor.errors]
 
@@ -422,6 +586,20 @@ def _format_bridge_write_error(path_text: str | None) -> str:
     if normalized.endswith("registry/repos.yaml"):
         return "bridge scope must not write registry/repos.yaml"
     return f"bridge scope must not perform file writes ({path_text})"
+
+
+def _format_validator_write_error(path_text: str | None) -> str:
+    if path_text is None:
+        return "validator orchestration scope must not perform file writes"
+
+    normalized = path_text.replace("\\", "/")
+    if normalized.endswith("queue/project_queue.yaml"):
+        return "validator orchestration scope must not write queue/project_queue.yaml"
+    if normalized.endswith("registry/projects.yaml"):
+        return "validator orchestration scope must not write registry/projects.yaml"
+    if normalized.endswith("registry/repos.yaml"):
+        return "validator orchestration scope must not write registry/repos.yaml"
+    return f"validator orchestration scope must not perform repo writes ({path_text})"
 
 
 def main() -> int:
